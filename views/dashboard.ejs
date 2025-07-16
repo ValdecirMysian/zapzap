@@ -1,0 +1,3290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Sistema WhatsApp</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style2.css">
+</head>
+<body>
+    <!-- Navbar Superior -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-whatsapp fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-whatsapp"></i> Farmapro-Bot
+            </a>
+            
+            <!-- Status das Sessões -->
+            <div class="d-flex align-items-center gap-3 flex-fill justify-content-center">
+                <div id="sessions-status" class="d-flex gap-2">
+                    <% sessions.forEach(session => { %>
+                    <div class="session-badge" data-session-id="<%= session.id %>">
+                        <i class="bi bi-phone"></i>
+                        <%= session.name %>
+                        <span class="status-dot <%= session.status %>"></span>
+                    </div>
+                    <% }) %>
+                </div>
+                <button class="btn btn-sm btn-light" onclick="showAddSession()">
+                    <i class="bi bi-plus-circle"></i> Nova Sessão
+                </button>
+                <button class="btn btn-sm btn-outline-info" onclick="toggleSocialView()" id="social-toggle-btn">
+                    <i class="bi bi-instagram"></i> Redes Sociais
+                </button>
+            </div>
+            
+            <!-- Menu do Usuário -->
+            <div class="dropdown">
+                <button class="btn btn-dark dropdown-toggle" data-bs-toggle="dropdown">
+                    <i class="bi bi-person-circle"></i> <%= user.name %>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><h6 class="dropdown-header"><%= user.role %> - <%= user.sector %></h6></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" onclick="showProfile()">
+                        <i class="bi bi-person"></i> Meu Perfil
+                    </a></li>
+                    <% if (user.role === 'admin') { %>
+                    <li><a class="dropdown-item" href="#" onclick="showUsers()">
+                        <i class="bi bi-people"></i> Usuários
+                    </a></li>
+                    <% } %>
+                    <% if (user.role === 'admin' || user.role === 'supervisor') { %>
+                    <li><a class="dropdown-item" href="#" onclick="showBusinessHoursSettings()">
+                        <i class="bi bi-clock"></i> Horário Comercial
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" onclick="showAutoMessagesSettings()">
+                        <i class="bi bi-chat-left-text"></i> Mensagens Automáticas
+                    </a></li>
+                    <% } %>
+                    <% if (user.role === 'admin' || user.role === 'supervisor') { %>
+                    <li><a class="dropdown-item" href="#" onclick="showCampaignsModal()">
+                        <i class="bi bi-megaphone"></i> Disparos por Tags
+                    </a></li>
+                    <% } %>
+                    <li><a class="dropdown-item" href="#" onclick="showReports()">
+                        <i class="bi bi-graph-up"></i> Relatórios
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" onclick="showMyPolls()">
+                        <i class="bi bi-ui-checks"></i> Minhas Enquetes
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" onclick="showSocialConnections()">
+                        <i class="bi bi-instagram"></i> Redes Sociais
+                    </a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="/logout">
+                        <i class="bi bi-box-arrow-right"></i> Sair
+                    </a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Container Principal -->
+    <div class="main-container">
+        <!-- Sidebar Esquerda - Lista de Conversas -->
+        <div class="sidebar-left">
+            <!-- Cabeçalho com Dropdown de Filtros -->
+            <div class="filters-header">
+                <!-- Botão para expandir/colapsar -->
+                <button class="btn btn-outline-primary w-100 mb-2" type="button" 
+                        data-bs-toggle="collapse" data-bs-target="#filtersCollapse" 
+                        aria-expanded="false" aria-controls="filtersCollapse">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="stats-mini">
+                            <span class="stat-mini">
+                                <i class="bi bi-hourglass"></i> <span id="queue-waiting-mini"><%= stats.waiting %></span>
+                            </span>
+                            <span class="stat-mini">
+                                <i class="bi bi-chat-dots"></i> <span id="queue-attending-mini"><%= stats.attending %></span>
+                            </span>
+                            <span class="stat-mini">
+                                <i class="bi bi-check-circle"></i> <span id="queue-finished-mini"><%= stats.finished_today %></span>
+                            </span>
+                        </div>
+                        <i class="bi bi-chevron-down toggle-icon"></i>
+                    </div>
+                    <div class="filter-summary mt-1">
+                        <small class="text-muted">
+                            <span id="filter-summary-text">Geral • Todas as Tags</span>
+                        </small>
+                    </div>
+                </button>
+                
+                <!-- Área Colapsável -->
+                <div class="collapse" id="filtersCollapse">
+                    <div class="filters-content">
+                        <!-- Estatísticas Completas -->
+                        <div class="queue-stats mb-3">
+                            <div class="stat-item">
+                                <span class="stat-value" id="queue-waiting"><%= stats.waiting %></span>
+                                <span class="stat-label">Esperando</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="queue-attending"><%= stats.attending %></span>
+                                <span class="stat-label">Em Atendimento</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-value" id="queue-finished"><%= stats.finished_today %></span>
+                                <span class="stat-label">Finalizados Hoje</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Abas de Visualização -->
+                        <div class="view-tabs mb-3">
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="view-type" id="view-all" value="all" checked>
+                                <label class="btn btn-outline-primary btn-sm" for="view-all">
+                                    <i class="bi bi-chat-dots"></i> Geral <span class="badge bg-primary" id="all-count">0</span>
+                                </label>
+                                
+                                <input type="radio" class="btn-check" name="view-type" id="view-mine" value="mine">
+                                <label class="btn btn-outline-success btn-sm" for="view-mine">
+                                    <i class="bi bi-person-check"></i> Meus <span class="badge bg-success" id="mine-count">0</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Filtros -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <select class="form-select form-select-sm" id="filter-sector">
+                                    <option value="">Todos os Setores</option>
+                                    <% sectors.forEach(sector => { %>
+                                    <option value="<%= sector %>" <%= user.sector === sector ? 'selected' : '' %>>
+                                        <%= sector %>
+                                    </option>
+                                    <% }) %>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <select class="form-select form-select-sm" id="filter-tag">
+                                    <option value="all">🏷️ Todas as Tags</option>
+                                    <!-- Tags serão carregadas via JavaScript -->
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Busca -->
+                        <div class="input-group input-group-sm mb-3">
+                            <input type="text" class="form-control" id="search-contact" 
+                                   placeholder="Buscar contato...">
+                            <button class="btn btn-outline-secondary" type="button">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                        <div>
+                        <button class="btn btn-outline-primary import-contacts-btn" onclick="importWhatsAppContacts()" 
+        title="Importar contatos do WhatsApp">
+    <i class="bi bi-download"></i> Importar Contatos do WhatsApp
+</button>
+</div>
+                        
+                        <!-- Filtros Ativos -->
+                        <div class="active-filters mb-2" id="active-filters" style="display: none;">
+                            <small class="text-muted">Filtros ativos:</small>
+                            <div class="d-flex flex-wrap gap-1 mt-1" id="active-filters-list">
+                                <!-- Filtros ativos aparecerão aqui -->
+                            </div>
+                        </div>
+                        
+                        <!-- Legenda de Cores -->
+                        <div class="color-legend">
+                            <small class="text-muted">Legenda:</small>
+                            <div class="d-flex flex-wrap gap-2 mt-1">
+                                <small class="text-danger">👑 Admin</small>
+                                <small class="text-warning">⭐ Supervisor</small>
+                                <small class="text-success">👤 Atendente</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Botões de Ação -->
+            <div class="d-grid gap-2 p-3">
+                <button class="btn btn-success" onclick="getNextFromQueue()">
+                    <i class="bi bi-person-plus"></i> Pegar Próximo da Fila
+                </button>
+                <button class="btn btn-primary" onclick="showNewContactModal()">
+                    <i class="bi bi-chat-dots"></i> Nova Conversa
+                </button>
+            </div>
+            
+            <!-- Lista de Conversas -->
+            <div class="contacts-list" id="contacts-list">
+                <!-- Será preenchido via JavaScript -->
+            </div>
+        </div>
+        
+        <!-- Área Central - Redes Sociais -->
+        <div class="social-media-area" id="social-media-area" style="display: none;">
+            <div class="row h-100">
+                <!-- Sidebar das Conversas Sociais -->
+                <div class="col-md-4 border-end">
+                    <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                        <h6 class="mb-0">
+                            <i class="bi bi-chat-dots"></i>
+                            Conversas Sociais
+                        </h6>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showSocialConnections()">
+                            <i class="bi bi-gear"></i>
+                        </button>
+                    </div>
+
+                    <!-- Status das Conexões -->
+                    <div class="p-2 border-bottom">
+                        <div class="d-flex gap-2">
+                            <div id="instagram-status" class="platform-status disconnected">
+                                <i class="bi bi-instagram"></i>
+                                <span>Instagram</span>
+                            </div>
+                            <div id="facebook-status" class="platform-status disconnected">
+                                <i class="bi bi-facebook"></i>
+                                <span>Facebook</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="p-2 border-bottom">
+                        <select class="form-select form-select-sm" id="social-platform-filter">
+                            <option value="">Todas as Plataformas</option>
+                            <option value="instagram">Instagram</option>
+                            <option value="facebook">Facebook</option>
+                        </select>
+                    </div>
+
+                    <!-- Lista de Conversas Sociais -->
+                    <div id="social-conversations-list" class="conversations-list">
+                        <div class="no-conversations text-center py-4">
+                            <i class="bi bi-chat-dots" style="font-size: 2rem; opacity: 0.3;"></i>
+                            <p class="text-muted mt-2">Nenhuma conversa ainda</p>
+                            <small class="text-muted">Conecte suas redes sociais para começar</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Área do Chat Social -->
+                <div class="col-md-8">
+                    <div id="social-chat-area" class="h-100 d-flex flex-column">
+                        <!-- No Chat Selected -->
+                        <div id="no-social-chat-selected" class="no-chat-selected">
+                            <i class="bi bi-chat-dots"></i>
+                            <p>Selecione uma conversa das redes sociais</p>
+                        </div>
+
+                        <!-- Chat Header -->
+                        <div id="social-chat-header" class="chat-header border-bottom p-3" style="display: none;">
+                            <div class="d-flex align-items-center">
+                                <img id="social-contact-avatar" src="" class="contact-avatar me-3" alt="Avatar">
+                                <div class="flex-grow-1">
+                                    <h6 id="social-contact-name" class="mb-0">Nome do Contato</h6>
+                                    <small id="social-contact-platform" class="text-muted">Plataforma</small>
+                                </div>
+                                <div class="contact-actions">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="markSocialAsRead()">
+                                        <i class="bi bi-check2-all"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="toggleSocialView()">
+                                        <i class="bi bi-arrow-left"></i> Voltar ao WhatsApp
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Messages Container -->
+                        <div id="social-messages-container" class="messages-container flex-grow-1" style="display: none;">
+                            <!-- Mensagens aparecerão aqui -->
+                        </div>
+
+                        <!-- Typing Area -->
+                        <div id="social-typing-area" class="typing-area border-top p-3" style="display: none;">
+                            <div class="input-group">
+                                <button class="btn btn-outline-secondary" type="button" onclick="selectSocialMedia()">
+                                    <i class="bi bi-paperclip"></i>
+                                </button>
+                                <input type="file" id="social-file-input" style="display: none;" accept="image/*,video/*">
+                                <input type="text" id="social-message-input" class="form-control" placeholder="Digite sua mensagem...">
+                                <button class="btn btn-primary" type="button" onclick="sendSocialMessage()">
+                                    <i class="bi bi-send"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Área Central - Conversa -->
+        <div class="chat-area">
+            <!-- Cabeçalho da Conversa -->
+            <div class="chat-header" id="chat-header" style="display: none;">
+                <div class="contact-info">
+                    <img src="" class="contact-avatar" id="contact-avatar">
+                    <div>
+                        <div class="contact-name" id="contact-name">Selecione uma conversa</div>
+                        <div class="contact-status" id="contact-status">Offline</div>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="transferChat()">
+                        <i class="bi bi-arrow-left-right"></i> Transferir
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="finishChat()">
+                        <i class="bi bi-x-circle"></i> Finalizar
+                    </button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="deleteConversation()">
+                        <i class="bi bi-trash"></i> Apagar
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Mensagens -->
+            <div class="messages-container" id="messages-container">
+                <div class="no-chat-selected">
+                    <i class="bi bi-chat-dots"></i>
+                    <p>Selecione uma conversa para começar</p>
+                </div>
+            </div>
+            
+           <!-- Área de Digitação -->
+            <div class="typing-area" id="typing-area" style="display: none;">
+                <div class="typing-indicator" id="typing-indicator" style="display: none;">
+                    <span></span> está digitando...
+                </div>
+                
+                <!-- Interface de Gravação de Áudio -->
+                <div class="audio-recording-area" id="audio-recording-area" style="display: none;">
+                    <div class="recording-controls">
+                        <div class="recording-status">
+                            <div class="recording-dot"></div>
+                            <span>Gravando áudio...</span>
+                            <div class="recording-timer" id="recording-timer">00:00</div>
+                        </div>
+                        <div class="recording-actions">
+                            <button class="btn btn-danger btn-sm" onclick="cancelRecording()" title="Cancelar">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            <button class="btn btn-success btn-sm" onclick="stopRecording()" title="Enviar">
+                                <i class="bi bi-check"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="recording-waveform">
+                        <canvas id="waveform-canvas" width="300" height="40"></canvas>
+                    </div>
+                </div>
+                </div>
+                
+                <!-- Área Normal de Input -->
+                <div class="input-area" id="normal-input-area">
+                    <button class="btn btn-light" onclick="showQuickReplies()">
+                        <i class="bi bi-lightning"></i>
+                    </button>
+                    <button class="btn btn-light" onclick="showEmojis()">
+                        <i class="bi bi-emoji-smile"></i>
+                    </button>
+                    <button class="btn btn-light" onclick="showPollModal()" title="Criar enquete">
+                        <i class="bi bi-ui-checks"></i>
+                    </button>
+                    <input type="file" id="file-input" style="display: none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx">
+                    <button class="btn btn-light" onclick="selectFile()">
+                        <i class="bi bi-paperclip"></i>
+                    </button>
+                    <input type="text" class="form-control" id="message-input" 
+                           placeholder="Digite uma mensagem...">
+                    <button class="btn btn-light" id="mic-btn" onclick="startRecording()" title="Gravar áudio">
+                        <i class="bi bi-mic"></i>
+                    </button>
+                    <button class="btn btn-success" onclick="sendMessage()">
+                        <i class="bi bi-send"></i>
+                    </button>
+                </div>
+            </div>
+        
+        <!-- Sidebar Direita - Informações -->
+        <div class="sidebar-right" id="sidebar-right" style="display: none;">
+            <div class="info-header">
+                <h5>Informações do Contato</h5>
+                <button class="btn-close" onclick="closeSidebar()"></button>
+            </div>
+            <div class="info-content">
+                <div class="text-center mb-3">
+                    <img src="" class="rounded-circle" id="info-avatar">
+                    <h6 class="mt-2" id="info-name">Nome do Contato</h6>
+                    <p class="text-muted" id="info-number">+55 11 99999-9999</p>
+                </div>
+                
+                <div class="info-section">
+                    <h6><i class="bi bi-tag"></i> Etiquetas</h6>
+                    <div id="contact-tags" class="tags-container">
+                        <!-- Tags serão adicionadas aqui -->
+                    </div>
+                </div>
+                <div class="info-section">
+                    <h6><i class="bi bi-pencil"></i> Anotação Rápida</h6>
+                    <textarea class="form-control" rows="4" id="contact-notes" 
+                              placeholder="Adicione anotações sobre o contato..."></textarea>
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn btn-sm btn-primary" onclick="saveNotes()">
+                            <i class="bi bi-save"></i> Salvar
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearNotes()">
+                            <i class="bi bi-x"></i> Limpar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modais -->
+    
+    <!-- Modal de Perfil - ADICIONAR AQUI -->
+    <div class="modal fade" id="profileModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-circle"></i> Meu Perfil
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Avatar Preview -->
+                    <div class="text-center mb-4">
+                        <img id="profile-avatar-preview" src="" class="rounded-circle" style="width: 80px; height: 80px; display: none;">
+                        <div class="mt-2">
+                            <span class="badge bg-primary" id="profile-role"><%= user.role %></span>
+                        </div>
+                    </div>
+
+                    <!-- Tabs de Perfil -->
+                    <ul class="nav nav-tabs" id="profileTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="profile-info-tab" data-bs-toggle="tab" data-bs-target="#profile-info" type="button">
+                                <i class="bi bi-person"></i> Informações
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="profile-password-tab" data-bs-toggle="tab" data-bs-target="#profile-password" type="button">
+                                <i class="bi bi-shield-lock"></i> Alterar Senha
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content mt-3" id="profileTabsContent">
+                        <!-- Aba Informações -->
+                        <div class="tab-pane fade show active" id="profile-info">
+                            <form id="profile-form">
+                                <div class="mb-3">
+                                    <label class="form-label">Nome:</label>
+                                    <input type="text" class="form-control" id="profile-name" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Email:</label>
+                                    <input type="email" class="form-control" id="profile-email" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Setor:</label>
+                                    <select class="form-control" id="profile-sector">
+                                        <option value="Geral">Geral</option>
+                                        <option value="Medicamento">Medicamento</option>
+                                        <option value="Perfumaria 1">Perfumaria 1</option>
+                                        <option value="Perfumaria 2">Perfumaria 2</option>
+                                        <option value="Suplementos">Suplementos</option>
+                                        <option value="Dermocosméticos">Dermocosméticos</option>
+                                        <option value="Caixa">Caixa</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Assinatura:</label>
+                                    <textarea class="form-control" id="profile-signature" rows="3" 
+                                              placeholder="Ex: Atenciosamente, João Silva - Farmácia XYZ"></textarea>
+                                    <div class="form-text">Será adicionada automaticamente ao final das mensagens quando habilitado</div>
+                                </div>
+                                <!-- No modal de configurações, próximo aos outros botões -->
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+  <button type="button" class="btn btn-info" onclick="reloadConfigurations()">
+    <i class="fas fa-sync"></i> Aplicar Agora
+  </button>
+  <button type="button" class="btn btn-primary" onclick="saveAutoMessagesSettings()">
+    <i class="fas fa-save"></i> Salvar e Aplicar
+  </button>
+</div>
+                            </form>
+                        </div>
+    
+
+                        <!-- Aba Alterar Senha -->
+                        <div class="tab-pane fade" id="profile-password">
+                            <form id="password-form">
+                                <div class="mb-3">
+                                    <label class="form-label">Senha Atual:</label>
+                                    <input type="password" class="form-control" id="current-password" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Nova Senha:</label>
+                                    <input type="password" class="form-control" id="new-password" required minlength="6">
+                                    <div class="form-text">Mínimo 6 caracteres</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Confirmar Nova Senha:</label>
+                                    <input type="password" class="form-control" id="confirm-password" required minlength="6">
+                                </div>
+                                
+                                <button type="button" class="btn btn-warning" onclick="changePassword()">
+                                    <i class="bi bi-shield-lock"></i> Alterar Senha
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="saveProfile()">
+                        <i class="bi bi-check-circle"></i> Salvar Perfil
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Encaminhar Mensagem -->
+    <div class="modal fade" id="forwardModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-arrow-right"></i> Encaminhar Mensagem
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Dados ocultos -->
+                    <input type="hidden" id="forward-message-id">
+                    <input type="hidden" id="forward-message-type">
+                    <input type="hidden" id="forward-message-content">
+                    <input type="hidden" id="forward-media-url">
+                    <input type="hidden" id="selected-forward-contact">
+                    
+                    <!-- Preview da mensagem -->
+                    <div class="mb-4">
+                        <h6><i class="bi bi-eye"></i> Mensagem a ser encaminhada:</h6>
+                        <div class="forward-message-preview" id="forward-preview">
+                            <!-- Preview será preenchido via JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Busca de contatos -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="bi bi-search"></i> Buscar contato:
+                        </label>
+                        <input type="text" class="form-control" id="forward-search" 
+                               placeholder="Digite o nome ou número..." 
+                               onkeyup="searchForwardContacts()">
+                    </div>
+                    
+                    <!-- Lista de contatos -->
+                    <div class="mb-3">
+                        <label class="form-label">Selecione o destinatário:</label>
+                        <div class="forward-contacts-container" style="max-height: 300px; overflow-y: auto;">
+                            <div id="forward-contacts-list">
+                                <div class="text-center py-3">
+                                    <div class="spinner-border text-primary" role="status"></div>
+                                    <p class="mt-2">Carregando contatos...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Texto adicional -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="bi bi-chat-text"></i> Adicionar comentário (opcional):
+                        </label>
+                        <textarea class="form-control" id="forward-additional-text" 
+                                  rows="3" placeholder="Digite um comentário adicional..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-primary" id="forward-send-btn" 
+                            onclick="forwardMessage()" disabled>
+                        <i class="bi bi-arrow-right"></i> Encaminhar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Nova Conversa (Atualizado) -->
+    <div class="modal fade" id="newContactModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-plus"></i> Nova Conversa
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Botão para importar contatos -->
+                    <div class="mb-4">
+                        <div class="alert alert-info">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="bi bi-info-circle"></i>
+                                    <strong>Dica:</strong> Importe seus contatos do WhatsApp
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="importWhatsAppContacts()">
+                                    <i class="bi bi-download"></i> Importar Contatos
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <form id="new-contact-form">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="bi bi-phone"></i> Número do WhatsApp: *
+                            </label>
+                            <input type="text" class="form-control" id="new-contact-number" 
+                                   placeholder="Ex: 11999999999 ou +5511999999999" required>
+                            <div class="form-text">Digite apenas números ou com código do país</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="bi bi-person"></i> Nome (opcional):
+                            </label>
+                            <input type="text" class="form-control" id="new-contact-name" 
+                                   placeholder="Nome do contato">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="bi bi-chat-text"></i> Mensagem:
+                            </label>
+                            <textarea class="form-control" id="new-contact-message" 
+                                      rows="4" placeholder="Digite sua mensagem..."></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="bi bi-paperclip"></i> Anexar mídia (opcional):
+                            </label>
+                            <input type="file" class="form-control" id="new-contact-media" 
+                                   accept="image/*,video/*,audio/*,.pdf,.doc,.docx">
+                            <div class="form-text">Imagens, vídeos, áudios ou documentos</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="sendToNewContact()">
+                        <i class="bi bi-send"></i> Enviar Mensagem
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Importar Contatos -->
+    <div class="modal fade" id="importContactsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-download"></i> Importar Contatos do WhatsApp
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-whatsapp text-success" style="font-size: 4rem;"></i>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <h6><i class="bi bi-exclamation-triangle"></i> Informações importantes:</h6>
+                        <ul class="mb-0">
+                            <li>Serão importados <strong>todos os contatos</strong> do seu WhatsApp</li>
+                            <li>Contatos duplicados serão atualizados automaticamente</li>
+                            <li>Grupos e listas de transmissão <strong>não</strong> serão importados</li>
+                            <li>O processo pode demorar alguns minutos</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6>O que será importado:</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="text-success">
+                                    <i class="bi bi-check-circle"></i> Nomes dos contatos<br>
+                                    <i class="bi bi-check-circle"></i> Números de telefone<br>
+                                    <i class="bi bi-check-circle"></i> Fotos de perfil
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-muted">
+                                    <i class="bi bi-x-circle"></i> Grupos<br>
+                                    <i class="bi bi-x-circle"></i> Status/Stories<br>
+                                    <i class="bi bi-x-circle"></i> Mensagens antigas
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="progress d-none" id="import-progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             style="width: 0%"></div>
+                    </div>
+                    
+                    <div id="import-status" class="mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="startContactsImport()">
+                        <i class="bi bi-download"></i> Iniciar Importação
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Nova Sessão -->
+    <div class="modal fade" id="addSessionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Nova Sessão WhatsApp</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nome da Sessão</label>
+                        <input type="text" class="form-control" id="session-name" 
+                               placeholder="Ex: Atendimento 1">
+                    </div>
+                    <div id="qr-code-area" class="text-center" style="display: none;">
+                        <p>Escaneie o QR Code com seu WhatsApp:</p>
+                        <img id="qr-code-img" src="" alt="QR Code" style="max-width: 100%;">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="createSession()">Criar Sessão</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Transferir -->
+    <div class="modal fade" id="transferModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Transferir Atendimento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <<div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Transferir para o setor:</label>
+                        <select class="form-select" id="transfer-sector" onchange="loadUsersForTransfer()">
+                            <% sectors.forEach(sector => { %>
+                            <option value="<%= sector %>"><%= sector %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    
+                    <!-- NOVO: Seleção de usuário específico -->
+                    <div class="mb-3">
+                        <label class="form-label">Usuário específico (opcional):</label>
+                        <select class="form-select" id="transfer-user">
+                            <option value="">Qualquer usuário do setor</option>
+                            <!-- Usuários serão carregados via JavaScript -->
+                        </select>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle"></i> 
+                            Deixe em branco para transferir para qualquer usuário do setor
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Motivo (opcional):</label>
+                        <textarea class="form-control" id="transfer-reason" rows="2" 
+                                  placeholder="Ex: Cliente precisa de atendimento especializado..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmTransfer()">Transferir</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Finalizar Atendimento -->
+    <div class="modal fade" id="finishModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Finalizar Atendimento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <p>Deseja realmente finalizar este atendimento?</p>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>O contato será removido da fila</strong> e poderá iniciar um novo atendimento quando enviar uma mensagem.
+                        </div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sendGoodbyeCheck" checked>
+                        <label class="form-check-label" for="sendGoodbyeCheck">
+                            <i class="bi bi-chat-dots"></i> Enviar mensagem de despedida
+                        </label>
+                        <small class="form-text text-muted d-block">
+                            "👋 Obrigado pelo contato! Caso precise de algo mais, estamos à disposição."
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" onclick="confirmFinish()">
+                        <i class="bi bi-check-circle"></i> Finalizar Atendimento
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Respostas Rápidas -->
+    <div class="modal fade" id="quickRepliesModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Respostas Rápidas</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Tabs -->
+                    <ul class="nav nav-tabs mb-3" id="quickReplyTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="use-reply-tab" data-bs-toggle="tab" data-bs-target="#use-reply-pane" type="button" role="tab">
+                                <i class="bi bi-lightning"></i> Usar Resposta
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="create-reply-tab" data-bs-toggle="tab" data-bs-target="#create-reply-pane" type="button" role="tab">
+                                <i class="bi bi-plus-circle"></i> Criar Nova
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="variables-tab" data-bs-toggle="tab" data-bs-target="#variables-pane" type="button" role="tab">
+                                <i class="bi bi-code-square"></i> Variáveis
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <!-- Tab Contents -->
+                    <div class="tab-content" id="quickReplyTabContent">
+                        <!-- Usar Resposta -->
+                        <div class="tab-pane fade show active" id="use-reply-pane" role="tabpanel">
+                            <div class="mb-3">
+                                <input type="text" class="form-control" id="search-quick-reply" 
+                                       placeholder="Buscar resposta...">
+                            </div>
+                            <div id="quick-replies-list" style="max-height: 400px; overflow-y: auto;">
+                                <!-- Lista será preenchida via JS -->
+                            </div>
+                        </div>
+                        
+                        <!-- Criar Nova -->
+                        <div class="tab-pane fade" id="create-reply-pane" role="tabpanel">
+                            <form id="new-quick-reply-form">
+                                <div class="mb-3">
+                                    <label class="form-label">Título</label>
+                                    <input type="text" class="form-control" id="new-reply-title" placeholder="Ex: Saudação" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        Conteúdo 
+                                        <small class="text-muted">(Use variáveis como {{nome}}, {{hora}}, {{data}})</small>
+                                    </label>
+                                    <textarea class="form-control" id="new-reply-content" rows="4" 
+                                              placeholder="Ex: Olá {{nome}}! São {{hora}} de {{data}}. Como posso ajudar?" required></textarea>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Atalho (opcional)</label>
+                                        <input type="text" class="form-control" id="new-reply-shortcut" 
+                                               placeholder="Ex: ola, saudacao, preco" maxlength="20">
+                                        <div class="form-text">
+                                            <i class="bi bi-info-circle"></i> 
+                                            Digite apenas o atalho (sem /). Use no chat: <code>/ola</code>, <code>/saudacao</code>, etc.
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Setor</label>
+                                        <select class="form-select" id="new-reply-sector">
+                                            <option value="Geral">Geral</option>
+                                            <option value="Medicamento">Medicamento</option>
+                                            <option value="Perfumaria 1">Perfumaria 1</option>
+                                            <option value="Perfumaria 2">Perfumaria 2</option>
+                                            <option value="Suplementos">Suplementos</option>
+                                            <option value="Dermocosméticos">Dermocosméticos</option>
+                                            <option value="Caixa">Caixa</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- Preview -->
+                                <div class="preview-section">
+                                    <label class="form-label">
+                                        <i class="bi bi-eye"></i> Preview
+                                    </label>
+                                    <div class="preview-box" id="reply-preview">
+                                        Digite o conteúdo acima para ver o preview...
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-save"></i> Salvar Resposta
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <!-- Variáveis -->
+                        <div class="tab-pane fade" id="variables-pane" role="tabpanel">
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Como usar variáveis:</strong> Digite o código da variável no conteúdo da resposta. Ela será substituída automaticamente.
+                            </div>
+                            <div id="variables-list">
+                                <!-- Variáveis serão carregadas via JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Gerenciar Usuários -->
+    <div class="modal fade" id="usersModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Gerenciar Usuários</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Formulário de novo usuário -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">Criar Novo Usuário</h6>
+                        </div>
+                        <div class="card-body">
+                            <form id="new-user-form">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Nome</label>
+                                        <input type="text" class="form-control" id="new-user-name" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="new-user-email" required>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Senha</label>
+                                        <input type="password" class="form-control" id="new-user-password" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Confirmar Senha</label>
+                                        <input type="password" class="form-control" id="new-user-password-confirm" required>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Função</label>
+                                        <select class="form-select" id="new-user-role">
+                                            <option value="atendente">Atendente</option>
+                                            <option value="supervisor">Supervisor</option>
+                                            <option value="admin">Administrador</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Setor</label>
+                                        <select class="form-select" id="new-user-sector">
+                                            <option value="Geral">Geral</option>
+                                            <option value="Medicamento">Medicamento</option>
+                                            <option value="Perfumaria 1">Perfumaria 1</option>
+                                            <option value="Perfumaria 2">Perfumaria 2</option>
+                                            <option value="Suplementos">Suplementos</option>
+                                            <option value="Dermocosméticos">Dermocosméticos</option>
+                                            <option value="Caixa">Caixa</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Assinatura</label>
+                                        <input type="text" class="form-control" id="new-user-signature" 
+                                               placeholder="Ex: João - Farmácia">
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-person-plus"></i> Criar Usuário
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Lista de usuários -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">Usuários Cadastrados</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Nome</th>
+                                            <th>Email</th>
+                                            <th>Função</th>
+                                            <th>Setor</th>
+                                            <th>Status</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="users-list">
+                                        <!-- Lista será preenchida via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Gerenciar Tags -->
+    <div class="modal fade" id="addTagModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Gerenciar Etiquetas</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Tabs -->
+                    <ul class="nav nav-tabs mb-3" id="tagTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="add-tag-tab" data-bs-toggle="tab" data-bs-target="#add-tag-pane" type="button" role="tab">
+                                Adicionar Tag
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="create-tag-tab" data-bs-toggle="tab" data-bs-target="#create-tag-pane" type="button" role="tab">
+                                Criar Nova
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <!-- Tab Contents -->
+                    <div class="tab-content" id="tagTabContent">
+                        <!-- Adicionar Tag Existente -->
+                        <div class="tab-pane fade show active" id="add-tag-pane" role="tabpanel">
+                            <h6>Tags Disponíveis:</h6>
+                            <div id="available-tags-list" class="available-tags">
+                                <!-- Tags disponíveis serão listadas aqui -->
+                            </div>
+                        </div>
+                        
+                        <!-- Criar Nova Tag -->
+                        <div class="tab-pane fade" id="create-tag-pane" role="tabpanel">
+                            <div class="mb-3">
+                                <label class="form-label">Nome da Tag</label>
+                                <input type="text" class="form-control" id="new-tag-name" placeholder="Ex: Cliente VIP">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Cor</label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="color" class="form-control form-control-color" id="new-tag-color" value="#6c757d">
+                                    <div class="tag-preview-container">
+                                        <span class="tag-preview" id="tag-preview" style="background-color: #6c757d;">Exemplo</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="createNewTag()">
+                                <i class="bi bi-plus-circle"></i> Criar Tag
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Disparos por Tags -->
+    <div class="modal fade" id="campaignsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-megaphone"></i> Disparos por Tags
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Tabs de Campanhas -->
+                    <ul class="nav nav-tabs mb-4" id="campaignTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="campaigns-list-tab" data-bs-toggle="tab" data-bs-target="#campaigns-list-pane" type="button" role="tab">
+                                <i class="bi bi-list"></i> Campanhas
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="new-campaign-tab" data-bs-toggle="tab" data-bs-target="#new-campaign-pane" type="button" role="tab">
+                                <i class="bi bi-plus-circle"></i> Nova Campanha
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="campaign-stats-tab" data-bs-toggle="tab" data-bs-target="#campaign-stats-pane" type="button" role="tab">
+                                <i class="bi bi-graph-up"></i> Estatísticas
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Conteúdo das Tabs -->
+                    <div class="tab-content" id="campaignTabContent">
+                        <!-- Tab Lista de Campanhas -->
+                        <div class="tab-pane fade show active" id="campaigns-list-pane" role="tabpanel">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-list"></i> Campanhas Recentes</h6>
+                                </div>
+                                <div class="col-md-6 text-end">
+                                    <button class="btn btn-primary btn-sm" onclick="showNewCampaignTab()">
+                                        <i class="bi bi-plus"></i> Nova Campanha
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="loadCampaignsList()">
+                                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="campaigns-container">
+                                <div id="campaigns-list" class="campaigns-list">
+                                    <!-- Lista será carregada via JavaScript -->
+                                    <div class="loading-campaigns text-center py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Carregando...</span>
+                                        </div>
+                                        <p class="mt-2 text-muted">Carregando campanhas...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab Nova Campanha -->
+                        <div class="tab-pane fade" id="new-campaign-pane" role="tabpanel">
+                            <form id="new-campaign-form" enctype="multipart/form-data">
+                                <div class="row">
+                                    <!-- Coluna Esquerda - Configuração -->
+                                    <div class="col-md-6">
+                                        <h6><i class="bi bi-gear"></i> Configuração da Campanha</h6>
+                                        
+                                        <!-- Nome da Campanha -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Nome da Campanha *</label>
+                                            <input type="text" class="form-control" id="campaign-name" 
+                                                   placeholder="Ex: Promoção Insulina Janeiro" required>
+                                            <div class="form-text">Nome para identificar a campanha internamente</div>
+                                        </div>
+
+                                        <!-- Seleção de Tags -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Tags de Contatos *</label>
+                                            <div class="tags-selection" id="tags-selection">
+                                                <!-- Tags serão carregadas via JavaScript -->
+                                            </div>
+                                            <div class="form-text">Selecione as tags dos contatos que receberão a mensagem</div>
+                                        </div>
+
+                                        <!-- Seleção de Setores -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Setores (Opcional)</label>
+                                            <div class="sectors-selection" id="sectors-selection">
+                                                <% sectors.forEach(sector => { %>
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input sector-checkbox" type="checkbox" 
+                                                           id="sector-<%= sector.replace(/\s+/g, '-') %>" value="<%= sector %>">
+                                                    <label class="form-check-label" for="sector-<%= sector.replace(/\s+/g, '-') %>">
+                                                        <%= sector %>
+                                                    </label>
+                                                </div>
+                                                <% }) %>
+                                            </div>
+                                            <div class="form-text">Filtrar também por setores específicos</div>
+                                        </div>
+
+                                        <!-- Preview de Contatos -->
+                                        <div class="mb-3">
+                                            <label class="form-label">
+                                                <i class="bi bi-eye"></i> Preview dos Contatos
+                                                <span class="badge bg-primary" id="contacts-count">0</span>
+                                            </label>
+                                            <div class="contacts-preview" id="contacts-preview">
+                                                <div class="text-muted text-center py-3">
+                                                    <i class="bi bi-people"></i>
+                                                    <p class="mb-0">Selecione tags ou setores para ver os contatos</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Coluna Direita - Mensagem -->
+                                    <div class="col-md-6">
+                                        <h6><i class="bi bi-chat-text"></i> Mensagem da Campanha</h6>
+                                        
+                                        <!-- Editor de Mensagem -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Conteúdo da Mensagem *</label>
+                                            <textarea class="form-control" id="campaign-content" rows="6" 
+                                                      placeholder="Digite sua mensagem aqui..." required></textarea>
+                                            <div class="form-text">
+                                                <strong>Variáveis disponíveis:</strong>
+                                                <code>{{nome}}</code>, <code>{{saudacao}}</code>, 
+                                                <code>{{telefone}}</code>, <code>{{data}}</code>
+                                            </div>
+                                        </div>
+
+                                        <!-- Variáveis Rápidas -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Inserir Variáveis</label>
+                                            <div class="variables-buttons" id="campaign-variables">
+                                                <!-- Variáveis serão carregadas via JavaScript -->
+                                            </div>
+                                        </div>
+
+                                        <!-- Upload de Mídia -->
+                                        <div class="mb-3">
+                                            <label class="form-label">Mídia (Opcional)</label>
+                                            <input type="file" class="form-control" id="campaign-media" 
+                                                   accept="image/*,video/*,audio/*,.pdf,.doc,.docx">
+                                            <div class="form-text">Imagem, vídeo, áudio ou documento (máx. 16MB)</div>
+                                            <div class="media-preview mt-2" id="media-preview" style="display: none;">
+                                                <!-- Preview da mídia aparecerá aqui -->
+                                            </div>
+                                        </div>
+
+                                        <!-- Preview da Mensagem -->
+                                        <div class="mb-3">
+                                            <label class="form-label">
+                                                <i class="bi bi-eye"></i> Preview da Mensagem
+                                            </label>
+                                            <div class="message-preview-campaign" id="message-preview-campaign">
+                                                <div class="preview-whatsapp">
+                                                    <div class="whatsapp-header">
+                                                        <i class="bi bi-whatsapp"></i> Farmapro-Bot
+                                                        <span class="text-muted">Agora</span>
+                                                    </div>
+                                                    <div class="whatsapp-message" id="preview-message-content">
+                                                        Digite uma mensagem para ver o preview...
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Agendamento -->
+                                <div class="row mt-4">
+                                    <div class="col-12">
+                                        <div class="schedule-section">
+                                            <h6><i class="bi bi-clock"></i> Agendamento</h6>
+                                            
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="radio" name="schedule-type" 
+                                                               id="schedule-now" value="now" checked>
+                                                        <label class="form-check-label" for="schedule-now">
+                                                            <i class="bi bi-play-fill"></i> Enviar Agora
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="radio" name="schedule-type" 
+                                                               id="schedule-later" value="scheduled">
+                                                        <label class="form-check-label" for="schedule-later">
+                                                            <i class="bi bi-calendar-event"></i> Agendar
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <input type="datetime-local" class="form-control form-control-sm" 
+                                                           id="schedule-datetime" disabled>
+                                                </div>
+                                            </div>
+
+                                            <!-- Informações do Envio -->
+                                            <div class="send-info mt-3" id="send-info">
+                                                <div class="alert alert-info">
+                                                    <i class="bi bi-info-circle"></i>
+                                                    <strong>Informações do Envio:</strong>
+                                                    <div id="send-details">
+                                                        <div>📊 Contatos selecionados: <span id="total-contacts">0</span></div>
+                                                        <div>⏱️ Tempo estimado: <span id="estimated-time">-</span></div>
+                                                        <div>🔒 Delay entre envios: 5 segundos (proteção anti-spam)</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Tab Estatísticas -->
+                        <div class="tab-pane fade" id="campaign-stats-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h6><i class="bi bi-graph-up"></i> Campanha em Andamento</h6>
+                                    <div id="active-campaign-stats">
+                                        <div class="text-muted text-center py-4">
+                                            <i class="bi bi-pause-circle"></i>
+                                            <p class="mb-0">Nenhuma campanha em andamento</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6><i class="bi bi-list-check"></i> Resumo Geral</h6>
+                                    <div class="stats-summary" id="campaigns-summary">
+                                        <!-- Estatísticas gerais -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x"></i> Fechar
+                    </button>
+                    <button type="button" class="btn btn-outline-primary" id="test-campaign-btn" onclick="testCampaignMessage()" style="display: none;">
+                        <i class="bi bi-play"></i> Testar Mensagem
+                    </button>
+                    <button type="button" class="btn btn-success" id="create-campaign-btn" onclick="createCampaign()" style="display: none;">
+                        <i class="bi bi-send"></i> Criar Campanha
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detalhes da Campanha -->
+    <div class="modal fade" id="campaignDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-eye"></i> Detalhes da Campanha
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="campaign-details-content">
+                        <!-- Conteúdo será carregado via JavaScript -->
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <div class="campaign-actions" id="campaign-detail-actions">
+                        <!-- Ações aparecerão aqui baseadas no status -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Progresso em Tempo Real -->
+    <div class="modal fade" id="campaignProgressModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-send"></i> Enviando Campanha
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <div class="progress-info" id="progress-info">
+                        <div class="campaign-name mb-3">
+                            <strong id="progress-campaign-name">Nome da Campanha</strong>
+                        </div>
+                        
+                        <div class="progress mb-3">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="progress-bar" role="progressbar" style="width: 0%">
+                                <span id="progress-text">0%</span>
+                            </div>
+                        </div>
+                        
+                        <div class="progress-stats">
+                            <div class="row text-center">
+                                <div class="col-4">
+                                    <div class="stat-number text-success" id="progress-sent">0</div>
+                                    <div class="stat-label">Enviados</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="stat-number text-danger" id="progress-failed">0</div>
+                                    <div class="stat-label">Falhas</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="stat-number text-primary" id="progress-total">0</div>
+                                    <div class="stat-label">Total</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="current-contact mt-3" id="current-contact">
+                            <small class="text-muted">Enviando para: <span id="current-contact-name">-</span></small>
+                        </div>
+                        
+                        <div class="estimated-time mt-2" id="estimated-completion">
+                            <small class="text-muted">Tempo estimado restante: <span id="time-remaining">Calculando...</span></small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-warning" id="pause-campaign-btn" onclick="pauseCampaign()">
+                        <i class="bi bi-pause"></i> Pausar
+                    </button>
+                    <button type="button" class="btn btn-danger" id="cancel-campaign-btn" onclick="cancelCampaign()">
+                        <i class="bi bi-stop"></i> Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Configurações de Horário Comercial -->
+    <div class="modal fade" id="businessHoursModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-clock"></i> Configurações de Horário Comercial
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Status Atual -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="alert" id="business-status-alert" role="alert">
+                                <div class="d-flex align-items-center">
+                                    <div class="status-indicator me-3" id="status-indicator">
+                                        <i class="bi bi-clock"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="alert-heading mb-1" id="status-title">Carregando status...</h6>
+                                        <p class="mb-0" id="status-description">Verificando horário atual...</p>
+                                    </div>
+                                    <div class="ms-auto">
+                                        <button class="btn btn-sm btn-outline-primary" onclick="refreshBusinessStatus()">
+                                            <i class="bi bi-arrow-clockwise"></i> Atualizar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabs de Configuração -->
+                    <ul class="nav nav-tabs mb-4" id="businessHoursTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="schedule-tab" data-bs-toggle="tab" data-bs-target="#schedule-pane" type="button" role="tab">
+                                <i class="bi bi-calendar-week"></i> Horários
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="message-tab" data-bs-toggle="tab" data-bs-target="#message-pane" type="button" role="tab">
+                                <i class="bi bi-chat-text"></i> Mensagem
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="exceptions-tab" data-bs-toggle="tab" data-bs-target="#exceptions-pane" type="button" role="tab">
+                                <i class="bi bi-calendar-x"></i> Exceções
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Conteúdo das Tabs -->
+                    <div class="tab-content" id="businessHoursTabContent">
+                        <!-- Tab Horários -->
+                        <div class="tab-pane fade show active" id="schedule-pane" role="tabpanel">
+                            <div class="row mb-3">
+                                <div class="col-12">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="business-hours-enabled">
+                                        <label class="form-check-label fw-bold" for="business-hours-enabled">
+                                            <i class="bi bi-power"></i> Habilitar Auto-resposta Fora do Horário
+                                        </label>
+                                        <div class="form-text">Quando desabilitado, sempre considera como horário comercial</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="schedule-container" id="schedule-container">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6><i class="bi bi-calendar-week"></i> Horários da Semana</h6>
+                                        <div class="schedule-days">
+                                            <!-- Segunda -->
+                                            <div class="day-schedule mb-3">
+                                                <div class="row align-items-center">
+                                                    <div class="col-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="monday-enabled">
+                                                            <label class="form-check-label fw-bold" for="monday-enabled">
+                                                                Segunda
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="monday-start" value="08:00">
+                                                    </div>
+                                                    <div class="col-1 text-center">às</div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="monday-end" value="18:00">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Terça -->
+                                            <div class="day-schedule mb-3">
+                                                <div class="row align-items-center">
+                                                    <div class="col-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="tuesday-enabled">
+                                                            <label class="form-check-label fw-bold" for="tuesday-enabled">
+                                                                Terça
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="tuesday-start" value="08:00">
+                                                    </div>
+                                                    <div class="col-1 text-center">às</div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="tuesday-end" value="18:00">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Quarta -->
+                                            <div class="day-schedule mb-3">
+                                                <div class="row align-items-center">
+                                                    <div class="col-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="wednesday-enabled">
+                                                            <label class="form-check-label fw-bold" for="wednesday-enabled">
+                                                                Quarta
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="wednesday-start" value="08:00">
+                                                    </div>
+                                                    <div class="col-1 text-center">às</div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="wednesday-end" value="18:00">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Quinta -->
+                                            <div class="day-schedule mb-3">
+                                                <div class="row align-items-center">
+                                                    <div class="col-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="thursday-enabled">
+                                                            <label class="form-check-label fw-bold" for="thursday-enabled">
+                                                                Quinta
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="thursday-start" value="08:00">
+                                                    </div>
+                                                    <div class="col-1 text-center">às</div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="thursday-end" value="18:00">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Sexta -->
+                                            <div class="day-schedule mb-3">
+                                                <div class="row align-items-center">
+                                                    <div class="col-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="friday-enabled">
+                                                            <label class="form-check-label fw-bold" for="friday-enabled">
+                                                                Sexta
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="friday-start" value="08:00">
+                                                    </div>
+                                                    <div class="col-1 text-center">às</div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="friday-end" value="18:00">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Sábado -->
+                                            <div class="day-schedule mb-3">
+                                                <div class="row align-items-center">
+                                                    <div class="col-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="saturday-enabled">
+                                                            <label class="form-check-label fw-bold" for="saturday-enabled">
+                                                                Sábado
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="saturday-start" value="08:00">
+                                                    </div>
+                                                    <div class="col-1 text-center">às</div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="saturday-end" value="12:00">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Domingo -->
+                                            <div class="day-schedule mb-3">
+                                                <div class="row align-items-center">
+                                                    <div class="col-3">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="checkbox" id="sunday-enabled">
+                                                            <label class="form-check-label fw-bold" for="sunday-enabled">
+                                                                Domingo
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="sunday-start" value="08:00">
+                                                    </div>
+                                                    <div class="col-1 text-center">às</div>
+                                                    <div class="col-4">
+                                                        <input type="time" class="form-control form-control-sm" id="sunday-end" value="18:00">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <h6><i class="bi bi-lightning"></i> Ações Rápidas</h6>
+                                        <div class="quick-actions mb-4">
+                                            <button class="btn btn-outline-primary btn-sm me-2 mb-2" onclick="setScheduleTemplate('commercial')">
+                                                <i class="bi bi-briefcase"></i> Comercial (Seg-Sex 8h-18h, Sáb 8h-12h)
+                                            </button>
+                                            <button class="btn btn-outline-primary btn-sm me-2 mb-2" onclick="setScheduleTemplate('extended')">
+                                                <i class="bi bi-clock-history"></i> Estendido (Seg-Sáb 8h-20h)
+                                            </button>
+                                            <button class="btn btn-outline-danger btn-sm mb-2" onclick="setScheduleTemplate('closed')">
+                                                <i class="bi bi-x-circle"></i> Tudo Fechado
+                                            </button>
+                                        </div>
+
+                                        <h6><i class="bi bi-info-circle"></i> Preview Horários</h6>
+                                        <div class="schedule-preview" id="schedule-preview">
+                                            <div class="alert alert-light">
+                                                <small class="text-muted">Os horários aparecerão aqui conforme você configura...</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab Mensagem -->
+                        <div class="tab-pane fade" id="message-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-chat-text"></i> Mensagem Automática</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">Conteúdo da mensagem:</label>
+                                        <textarea class="form-control" id="business-hours-message" rows="8"
+                                                  placeholder="Digite a mensagem que será enviada fora do horário comercial..."></textarea>
+                                        <div class="form-text">
+                                            <strong>Variáveis disponíveis:</strong>
+                                            <code>{{horarios}}</code>, <code>{{proximo_funcionamento}}</code>, 
+                                            <code>{{data_atual}}</code>, <code>{{hora_atual}}</code>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="message-variables mb-3">
+                                        <h6><i class="bi bi-code-square"></i> Inserir Variáveis</h6>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="insertBusinessVariable('{{horarios}}')">
+                                                📅 Horários
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="insertBusinessVariable('{{proximo_funcionamento}}')">
+                                                ⏰ Próximo Funcionamento
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="insertBusinessVariable('{{data_atual}}')">
+                                                📆 Data Atual
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="insertBusinessVariable('{{hora_atual}}')">
+                                                🕐 Hora Atual
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-primary" onclick="testBusinessMessage()">
+                                            <i class="bi bi-play"></i> Testar Mensagem
+                                        </button>
+                                        <button class="btn btn-outline-secondary" onclick="resetDefaultMessage()">
+                                            <i class="bi bi-arrow-clockwise"></i> Restaurar Padrão
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-eye"></i> Preview da Mensagem</h6>
+                                    <div class="message-preview" id="message-preview">
+                                        <div class="preview-phone">
+                                            <div class="phone-header">
+                                                <i class="bi bi-whatsapp"></i> Farmapro-Bot
+                                                <span class="text-muted">Agora</span>
+                                            </div>
+                                            <div class="phone-message" id="preview-content">
+                                                Digite uma mensagem para ver o preview...
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="test-result mt-3" id="test-result" style="display: none;">
+                                        <h6><i class="bi bi-check-circle"></i> Resultado do Teste</h6>
+                                        <div class="alert alert-success">
+                                            <pre id="test-output" class="mb-0"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab Exceções -->
+                        <div class="tab-pane fade" id="exceptions-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-calendar-x"></i> Feriados e Exceções</h6>
+                                    
+                                    <div class="mb-4">
+                                        <h6 class="text-muted">Adicionar Feriado</h6>
+                                        <div class="row">
+                                            <div class="col-6">
+                                                <input type="date" class="form-control form-control-sm" id="holiday-date">
+                                            </div>
+                                            <div class="col-4">
+                                                <input type="text" class="form-control form-control-sm" id="holiday-name" placeholder="Nome do feriado">
+                                            </div>
+                                            <div class="col-2">
+                                                <button class="btn btn-primary btn-sm w-100" onclick="addHoliday()">
+                                                    <i class="bi bi-plus"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-4">
+                                        <h6 class="text-muted">Exceção de Horário</h6>
+                                        <div class="row mb-2">
+                                            <div class="col-4">
+                                                <input type="date" class="form-control form-control-sm" id="exception-date">
+                                            </div>
+                                            <div class="col-3">
+                                                <input type="time" class="form-control form-control-sm" id="exception-start" value="08:00">
+                                            </div>
+                                            <div class="col-3">
+                                                <input type="time" class="form-control form-control-sm" id="exception-end" value="14:00">
+                                            </div>
+                                            <div class="col-2">
+                                                <button class="btn btn-primary btn-sm w-100" onclick="addException()">
+                                                    <i class="bi bi-plus"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">Ex: Véspera de Natal com horário especial</small>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-list"></i> Lista de Exceções</h6>
+                                    
+                                    <div class="exceptions-list">
+                                        <div class="mb-3">
+                                            <h6 class="text-primary">🎄 Feriados</h6>
+                                            <div id="holidays-list" class="exceptions-container">
+                                                <!-- Feriados aparecerão aqui -->
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <h6 class="text-warning">⏰ Horários Especiais</h6>
+                                            <div id="exceptions-list" class="exceptions-container">
+                                                <!-- Exceções aparecerão aqui -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="saveBusinessHoursSettings()">
+                        <i class="bi bi-save"></i> Salvar Configurações
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Mensagens Automáticas -->
+    <div class="modal fade" id="autoMessagesModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-chat-left-text"></i> Configurações de Mensagens Automáticas
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Status Atual -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="alert alert-info" id="auto-messages-status" role="alert">
+                                <div class="d-flex align-items-center">
+                                    <div class="status-indicator me-3">
+                                        <i class="bi bi-info-circle"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="alert-heading mb-1">Mensagens Automáticas</h6>
+                                        <p class="mb-0">Configure as mensagens que são enviadas automaticamente pelo sistema</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabs de Configuração -->
+                    <ul class="nav nav-tabs mb-4" id="autoMessagesTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="welcome-tab" data-bs-toggle="tab" data-bs-target="#welcome-pane" type="button" role="tab">
+                                <i class="bi bi-person-plus"></i> Boas-vindas
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="goodbye-tab" data-bs-toggle="tab" data-bs-target="#goodbye-pane" type="button" role="tab">
+                                <i class="bi bi-hand-thumbs-up"></i> Despedida
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="polls-config-tab" data-bs-toggle="tab" data-bs-target="#polls-config-pane" type="button" role="tab">
+                                <i class="bi bi-ui-checks"></i> Enquetes
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced-pane" type="button" role="tab">
+                                <i class="bi bi-gear"></i> Avançado
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Conteúdo das Tabs -->
+                    <div class="tab-content" id="autoMessagesTabContent">
+                        <!-- Tab Boas-vindas -->
+                        <div class="tab-pane fade show active" id="welcome-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-person-plus"></i> Mensagem de Boas-vindas</h6>
+                                    
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="welcome-enabled">
+                                        <label class="form-check-label fw-bold" for="welcome-enabled">
+                                            Enviar mensagem de boas-vindas automaticamente
+                                        </label>
+                                        <div class="form-text">Enviada quando um novo contato entra na fila</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Mensagem de Boas-vindas:</label>
+                                        <textarea class="form-control" id="welcome-message" rows="4"
+                                                  placeholder="Ex: 👋 Olá! Bem-vindo ao nosso atendimento..."></textarea>
+                                        <div class="form-text">
+                                            <strong>Variáveis disponíveis:</strong>
+                                            <code>{{nome}}</code>, <code>{{saudacao}}</code>, <code>{{hora}}</code>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Horário de funcionamento:</label>
+                                        <div class="row">
+                                            <div class="col-6">
+                                                <label class="form-label small">Das</label>
+                                                <input type="time" class="form-control" id="welcome-start" value="08:00">
+                                            </div>
+                                            <div class="col-6">
+                                                <label class="form-label small">Até</label>
+                                                <input type="time" class="form-control" id="welcome-end" value="18:00">
+                                            </div>
+                                        </div>
+                                        <div class="form-text">Mensagem diferente será enviada fora deste horário</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Mensagem fora do horário:</label>
+                                        <textarea class="form-control" id="welcome-after-hours" rows="3"
+                                                  placeholder="Ex: 🌙 Olá! Nosso horário de atendimento é de 8h às 18h..."></textarea>
+                                    </div>
+
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-primary" onclick="testWelcomeMessage()">
+                                            <i class="bi bi-play"></i> Testar
+                                        </button>
+                                        <button class="btn btn-outline-secondary" onclick="resetWelcomeMessage()">
+                                            <i class="bi bi-arrow-clockwise"></i> Restaurar Padrão
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-eye"></i> Preview da Mensagem</h6>
+                                    <div class="message-preview">
+                                        <div class="preview-phone">
+                                            <div class="phone-header">
+                                                <i class="bi bi-whatsapp"></i> Farmapro-Bot
+                                                <span class="text-muted">Agora</span>
+                                            </div>
+                                            <div class="phone-message" id="welcome-preview-content">
+                                                Digite uma mensagem para ver o preview...
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab Despedida -->
+                        <div class="tab-pane fade" id="goodbye-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-hand-thumbs-up"></i> Mensagem de Despedida</h6>
+                                    
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="goodbye-enabled">
+                                        <label class="form-check-label fw-bold" for="goodbye-enabled">
+                                            Enviar mensagem de despedida automaticamente
+                                        </label>
+                                        <div class="form-text">Enviada quando um atendimento é finalizado</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Mensagem de Despedida:</label>
+                                        <textarea class="form-control" id="goodbye-message" rows="4"
+                                                  placeholder="Ex: 👋 Agradecemos seu contato! Caso precise de algo mais..."></textarea>
+                                    </div>
+
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="goodbye-include-signature">
+                                        <label class="form-check-label" for="goodbye-include-signature">
+                                            Incluir assinatura do atendente
+                                        </label>
+                                    </div>
+
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="goodbye-include-rating">
+                                        <label class="form-check-label" for="goodbye-include-rating">
+                                            Incluir solicitação de avaliação
+                                        </label>
+                                        <div class="form-text">Adiciona: "Avalie nosso atendimento de 1 a 5"</div>
+                                    </div>
+
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-primary" onclick="testGoodbyeMessage()">
+                                            <i class="bi bi-play"></i> Testar
+                                        </button>
+                                        <button class="btn btn-outline-secondary" onclick="resetGoodbyeMessage()">
+                                            <i class="bi bi-arrow-clockwise"></i> Restaurar Padrão
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-eye"></i> Preview da Mensagem</h6>
+                                    <div class="message-preview">
+                                        <div class="preview-phone">
+                                            <div class="phone-header">
+                                                <i class="bi bi-whatsapp"></i> Farmapro-Bot
+                                                <span class="text-muted">Agora</span>
+                                            </div>
+                                            <div class="phone-message" id="goodbye-preview-content">
+                                                Digite uma mensagem para ver o preview...
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab Configurações de Enquetes -->
+                        <div class="tab-pane fade" id="polls-config-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h6><i class="bi bi-ui-checks"></i> Configurações de Enquetes</h6>
+                                    
+                                    <div class="card mb-4">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Salvamento Automático</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="form-check form-switch mb-3">
+                                                <input class="form-check-input" type="checkbox" id="polls-auto-save">
+                                                <label class="form-check-label fw-bold" for="polls-auto-save">
+                                                    <i class="bi bi-floppy"></i> Salvar enquetes automaticamente
+                                                </label>
+                                                <div class="form-text">
+                                                    Quando habilitado, todas as enquetes criadas são salvas automaticamente no sistema
+                                                </div>
+                                            </div>
+
+                                            <div class="alert alert-info">
+                                                <i class="bi bi-info-circle"></i>
+                                                <strong>Como funciona:</strong>
+                                                <ul class="mb-0 mt-2">
+                                                    <li><strong>Habilitado:</strong> Enquetes são salvas automaticamente e podem ser vistas em "Minhas Enquetes"</li>
+                                                    <li><strong>Desabilitado:</strong> Enquetes são apenas enviadas, sem salvar no sistema</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="card mb-4">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Expiração Automática</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="form-check form-switch mb-3">
+                                                <input class="form-check-input" type="checkbox" id="polls-auto-expire">
+                                                <label class="form-check-label fw-bold" for="polls-auto-expire">
+                                                    <i class="bi bi-clock"></i> Expirar enquetes automaticamente
+                                                </label>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Tempo de expiração:</label>
+                                                    <select class="form-select" id="polls-expire-time">
+                                                        <option value="1">1 hora</option>
+                                                        <option value="6">6 horas</option>
+                                                        <option value="12">12 horas</option>
+                                                        <option value="24" selected>24 horas</option>
+                                                        <option value="48">48 horas</option>
+                                                        <option value="168">1 semana</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Ação ao expirar:</label>
+                                                    <select class="form-select" id="polls-expire-action">
+                                                        <option value="close">Fechar automaticamente</option>
+                                                        <option value="notify">Apenas notificar</option>
+                                                        <option value="extend">Estender por mais 24h</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Notificações de Resposta</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" id="polls-notify-response">
+                                                <label class="form-check-label" for="polls-notify-response">
+                                                    Notificar quando alguém responder uma enquete
+                                                </label>
+                                            </div>
+                                            
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" id="polls-notify-completion">
+                                                <label class="form-check-label" for="polls-notify-completion">
+                                                    Notificar quando enquete atingir 10 respostas
+                                                </label>
+                                            </div>
+
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" id="polls-auto-confirm">
+                                                <label class="form-check-label" for="polls-auto-confirm">
+                                                    Enviar confirmação automática para quem responder
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0"><i class="bi bi-graph-up"></i> Estatísticas</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="stat-item mb-3">
+                                                <div class="stat-number text-primary" id="total-polls">0</div>
+                                                <div class="stat-label">Enquetes Criadas</div>
+                                            </div>
+                                            
+                                            <div class="stat-item mb-3">
+                                                <div class="stat-number text-success" id="active-polls">0</div>
+                                                <div class="stat-label">Ativas</div>
+                                            </div>
+                                            
+                                            <div class="stat-item mb-3">
+                                                <div class="stat-number text-info" id="total-responses">0</div>
+                                                <div class="stat-label">Respostas Recebidas</div>
+                                            </div>
+
+                                            <button class="btn btn-outline-primary btn-sm w-100" onclick="showMyPolls(); $('#autoMessagesModal').modal('hide');">
+                                                <i class="bi bi-eye"></i> Ver Todas as Enquetes
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab Avançado -->
+                        <div class="tab-pane fade" id="advanced-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-gear"></i> Configurações Avançadas</h6>
+                                    
+                                    <div class="card mb-4">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Delay entre Mensagens</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="mb-3">
+                                                <label class="form-label">Delay para mensagens automáticas (segundos):</label>
+                                                <input type="number" class="form-control" id="auto-message-delay" 
+                                                       value="2" min="0" max="60">
+                                                <div class="form-text">Tempo de espera antes de enviar mensagem automática</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="card mb-4">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Controle de Spam</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" id="prevent-spam" checked>
+                                                <label class="form-check-label" for="prevent-spam">
+                                                    Prevenir spam de mensagens automáticas
+                                                </label>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label class="form-label">Intervalo mínimo entre mensagens (minutos):</label>
+                                                <input type="number" class="form-control" id="spam-interval" 
+                                                       value="5" min="1" max="1440">
+                                                <div class="form-text">Não enviar a mesma mensagem automática antes deste tempo</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Logs e Histórico</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" id="log-auto-messages" checked>
+                                                <label class="form-check-label" for="log-auto-messages">
+                                                    Registrar mensagens automáticas no histórico
+                                                </label>
+                                            </div>
+                                            
+                                            <div class="form-check mb-3">
+                                                <input class="form-check-input" type="checkbox" id="show-auto-signature">
+                                                <label class="form-check-label" for="show-auto-signature">
+                                                    Mostrar que a mensagem é automática
+                                                </label>
+                                                <div class="form-text">Adiciona "_Mensagem automática_" no final</div>
+                                            </div>
+
+                                            <button class="btn btn-outline-info btn-sm" onclick="showAutoMessageLogs()">
+                                                <i class="bi bi-list"></i> Ver Logs de Mensagens Automáticas
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <h6><i class="bi bi-code-square"></i> Templates Rápidos</h6>
+                                    
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">Templates Predefinidos</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="template-list">
+                                                <div class="template-item mb-3">
+                                                    <div class="d-flex justify-content-between align-items-start">
+                                                        <div>
+                                                            <strong>Farmácia Padrão</strong>
+                                                            <div class="text-muted small">Mensagens otimizadas para farmácias</div>
+                                                        </div>
+                                                        <button class="btn btn-sm btn-outline-primary" onclick="applyTemplate('pharmacy')">
+                                                            Aplicar
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div class="template-item mb-3">
+                                                    <div class="d-flex justify-content-between align-items-start">
+                                                        <div>
+                                                            <strong>Formal</strong>
+                                                            <div class="text-muted small">Linguagem mais formal e profissional</div>
+                                                        </div>
+                                                        <button class="btn btn-sm btn-outline-primary" onclick="applyTemplate('formal')">
+                                                            Aplicar
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div class="template-item mb-3">
+                                                    <div class="d-flex justify-content-between align-items-start">
+                                                        <div>
+                                                            <strong>Casual</strong>
+                                                            <div class="text-muted small">Linguagem mais descontraída</div>
+                                                        </div>
+                                                        <button class="btn btn-sm btn-outline-primary" onclick="applyTemplate('casual')">
+                                                            Aplicar
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div class="template-item">
+                                                    <div class="d-flex justify-content-between align-items-start">
+                                                        <div>
+                                                            <strong>Minimalista</strong>
+                                                            <div class="text-muted small">Mensagens curtas e diretas</div>
+                                                        </div>
+                                                        <button class="btn btn-sm btn-outline-primary" onclick="applyTemplate('minimal')">
+                                                            Aplicar
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="saveAutoMessagesSettings()">
+                        <i class="bi bi-save"></i> Salvar Configurações
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Criar Enquete -->
+    <div class="modal fade" id="pollModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-ui-checks"></i> Criar Enquete
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Pergunta da Enquete</label>
+                        <input type="text" class="form-control" id="poll-question" 
+                               placeholder="Ex: Qual horário prefere para retirar o medicamento?">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Opções (uma por linha)</label>
+                        <textarea class="form-control" id="poll-options" rows="4" 
+                                  placeholder="Manhã (8h-12h)&#10;Tarde (12h-18h)&#10;Noite (18h-22h)"></textarea>
+                        <div class="form-text">Digite cada opção em uma linha separada</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Tipo de Resposta</label>
+                        <select class="form-select" id="poll-type">
+                            <option value="single">Escolha única</option>
+                            <option value="multiple">Múltipla escolha</option>
+                        </select>
+                    </div>
+                    
+                    <div class="poll-preview">
+                        <label class="form-label">Preview:</label>
+                        <div class="preview-box" id="poll-preview">
+                            <div class="text-muted">Digite a pergunta e opções para ver o preview...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="sendPoll()">
+                        <i class="bi bi-send"></i> Enviar Enquete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Minhas Enquetes -->
+    <div class="modal fade" id="myPollsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-ui-checks"></i> Minhas Enquetes
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6>Enquetes Criadas</h6>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <button class="btn btn-primary btn-sm" onclick="showPollModal(); $('#myPollsModal').modal('hide');">
+                                <i class="bi bi-plus"></i> Nova Enquete
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="my-polls-list">
+                        <!-- Lista será carregada via JavaScript -->
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Resultados da Enquete -->
+    <div class="modal fade" id="pollResultsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-graph-up"></i> Resultados da Enquete
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="poll-results-header mb-4">
+                        <h6 id="poll-results-question" class="fw-bold"></h6>
+                        <p class="text-muted">Total de respostas: <span id="poll-results-total" class="fw-bold">0</span></p>
+                    </div>
+                    
+                    <div id="poll-results-details">
+                        <!-- Resultados serão carregados via JavaScript -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Seletor de Emojis -->
+    <div class="modal fade" id="emojiModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">😊 Escolha um Emoji</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="emoji-categories mb-3">
+                        <button class="btn btn-sm btn-outline-primary active" onclick="showEmojiCategory('smileys')">😊</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showEmojiCategory('gestures')">👍</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showEmojiCategory('objects')">📱</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showEmojiCategory('symbols')">❤️</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showEmojiCategory('food')">🍔</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showEmojiCategory('nature')">🌸</button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showEmojiCategory('places')">🏠</button>
+                    </div>
+                    <div class="emoji-grid" id="emoji-grid">
+                        <!-- Emojis serão carregados aqui -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Dashboard de Estatísticas -->
+    <div class="modal fade" id="dashboardModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-graph-up"></i> Dashboard de Estatísticas
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Filtros -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label">Período</label>
+                            <select class="form-select" id="dashboard-period">
+                                <option value="7">Últimos 7 dias</option>
+                                <option value="15">Últimos 15 dias</option>
+                                <option value="30">Últimos 30 dias</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Setor</label>
+                            <select class="form-select" id="dashboard-sector">
+                                <option value="all">Todos os Setores</option>
+                                <% sectors.forEach(sector => { %>
+                                <option value="<%= sector %>"><%= sector %></option>
+                                <% }) %>
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button class="btn btn-primary" onclick="loadDashboardData()">
+                                <i class="bi bi-arrow-clockwise"></i> Atualizar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Cards de Estatísticas -->
+                    <div class="row mb-4" id="dashboard-cards">
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="stat-icon bg-primary">
+                                    <i class="bi bi-chat-dots"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3 id="total-chats">0</h3>
+                                    <p>Total de Atendimentos</p>
+                                    <small class="text-muted">Hoje: <span id="today-chats">0</span></small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="stat-icon bg-success">
+                                    <i class="bi bi-check-circle"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3 id="finished-chats">0</h3>
+                                    <p>Finalizados</p>
+                                    <small class="text-muted">Hoje: <span id="today-finished">0</span></small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="stat-icon bg-warning">
+                                    <i class="bi bi-clock"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3><span id="avg-time">0</span>min</h3>
+                                    <p>Tempo Médio</p>
+                                    <small class="text-muted">Hoje: <span id="today-avg-time">0</span>min</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card">
+                                <div class="stat-icon bg-info">
+                                    <i class="bi bi-percent"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3><span id="efficiency">0</span>%</h3>
+                                    <p>Eficiência</p>
+                                    <small class="text-muted">Finalizados/Total</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Gráficos -->
+                    <div class="row">
+                        <!-- Gráfico de Atendimentos por Dia -->
+                        <div class="col-md-8 mb-4">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-bar-chart"></i> Atendimentos por Dia
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="dailyChart" height="300"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Top Tags -->
+                        <div class="col-md-4 mb-4">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-tags"></i> Tags Mais Usadas
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="tagsChart" height="300"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Ranking de Atendentes -->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-trophy"></i> Ranking de Atendentes
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Posição</th>
+                                                    <th>Atendente</th>
+                                                    <th>Setor</th>
+                                                    <th>Total</th>
+                                                    <th>Finalizados</th>
+                                                    <th>Eficiência</th>
+                                                    <th>Tempo Médio</th>
+                                                    <th>Tempo de Espera</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="agents-ranking">
+                                                <!-- Dados serão carregados via JS -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary" onclick="exportDashboardData()">
+                        <i class="bi bi-download"></i> Exportar Dados
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Conexões Sociais -->
+    <div class="modal fade" id="socialConnectionsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-gear"></i> Configurações de Redes Sociais
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Status Atual -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <h6><i class="bi bi-info-circle"></i> Status das Conexões</h6>
+                                <div class="connection-status">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span><i class="bi bi-instagram"></i> Instagram Business</span>
+                                        <span id="instagram-connection-status" class="badge bg-danger">Desconectado</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-facebook"></i> Facebook Messenger</span>
+                                        <span id="facebook-connection-status" class="badge bg-danger">Desconectado</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabs de Configuração -->
+                    <ul class="nav nav-tabs mb-4" id="socialTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="instagram-tab" data-bs-toggle="tab" data-bs-target="#instagram-pane" type="button" role="tab">
+                                <i class="bi bi-instagram"></i> Instagram
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="facebook-tab" data-bs-toggle="tab" data-bs-target="#facebook-pane" type="button" role="tab">
+                                <i class="bi bi-facebook"></i> Facebook
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Conteúdo das Tabs -->
+                    <div class="tab-content" id="socialTabContent">
+                        <!-- Tab Instagram -->
+                        <div class="tab-pane fade show active" id="instagram-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h6><i class="bi bi-instagram"></i> Instagram Business API</h6>
+                                    
+                                    <div class="alert alert-warning">
+                                        <h6><i class="bi bi-exclamation-triangle"></i> Requisitos:</h6>
+                                        <ul class="mb-0">
+                                            <li>Conta Instagram Business ou Creator</li>
+                                            <li>Página do Facebook vinculada</li>
+                                            <li>App Facebook Developer configurado</li>
+                                        </ul>
+                                    </div>
+
+                                    <form id="instagram-connection-form">
+                                        <div class="mb-3">
+                                            <label class="form-label">Access Token *</label>
+                                            <input type="text" class="form-control" id="instagram-access-token" 
+                                                   placeholder="Cole aqui o Access Token do Instagram">
+                                            <div class="form-text">Token de acesso da API do Instagram Business</div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="form-label">Business Account ID *</label>
+                                            <input type="text" class="form-control" id="instagram-business-id" 
+                                                   placeholder="ID da conta business do Instagram">
+                                            <div class="form-text">ID da sua conta Instagram Business</div>
+                                        </div>
+                                        
+                                        <button type="button" class="btn btn-instagram" onclick="connectInstagram()">
+                                            <i class="bi bi-instagram"></i> Conectar Instagram
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" onclick="testSocialConnection('instagram')">
+                                            <i class="bi bi-wifi"></i> Testar Conexão
+                                        </button>
+                                    </form>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Como obter as credenciais?</h6>
+                                    <div class="help-steps">
+                                        <ol class="small">
+                                            <li>Acesse <a href="https://developers.facebook.com" target="_blank">Facebook Developers</a></li>
+                                            <li>Crie/Configure seu App</li>
+                                            <li>Adicione o produto "Instagram Basic Display"</li>
+                                            <li>Configure o webhook para mensagens</li>
+                                            <li>Obtenha o Access Token</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab Facebook -->
+                        <div class="tab-pane fade" id="facebook-pane" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h6><i class="bi bi-facebook"></i> Facebook Messenger API</h6>
+                                    
+                                    <div class="alert alert-info">
+                                        <h6><i class="bi bi-info-circle"></i> Requisitos:</h6>
+                                        <ul class="mb-0">
+                                            <li>Página do Facebook</li>
+                                            <li>App Facebook Developer</li>
+                                            <li>Permissões de Messenger</li>
+                                        </ul>
+                                    </div>
+
+                                    <form id="facebook-connection-form">
+                                        <div class="mb-3">
+                                            <label class="form-label">Page Access Token *</label>
+                                            <input type="text" class="form-control" id="facebook-page-token" 
+                                                   placeholder="Cole aqui o Page Access Token">
+                                            <div class="form-text">Token de acesso da sua página do Facebook</div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="form-label">Page ID *</label>
+                                            <input type="text" class="form-control" id="facebook-page-id" 
+                                                   placeholder="ID da sua página do Facebook">
+                                            <div class="form-text">ID da sua página do Facebook</div>
+                                        </div>
+                                        
+                                        <button type="button" class="btn btn-facebook" onclick="connectFacebook()">
+                                            <i class="bi bi-facebook"></i> Conectar Facebook
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" onclick="testSocialConnection('facebook')">
+                                            <i class="bi bi-wifi"></i> Testar Conexão
+                                        </button>
+                                    </form>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Como obter as credenciais?</h6>
+                                    <div class="help-steps">
+                                        <ol class="small">
+                                            <li>Acesse <a href="https://developers.facebook.com" target="_blank">Facebook Developers</a></li>
+                                            <li>Configure seu App</li>
+                                            <li>Adicione o produto "Messenger"</li>
+                                            <li>Configure o webhook</li>
+                                            <li>Gere o Page Access Token</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-outline-danger" onclick="disconnectAllSocial()">
+                        <i class="bi bi-x-circle"></i> Desconectar Tudo
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast de Notificação -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="notificationToast" class="toast" role="alert">
+            <div class="toast-header">
+                <i class="bi bi-bell me-2"></i>
+                <strong class="me-auto">Nova Mensagem</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toast-body">
+                <!-- Conteúdo da notificação -->
+            </div>
+        </div>
+    </div>
+<!-- Modal Nova Conversa -->
+    <div class="modal fade" id="newContactModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-chat-dots"></i> Nova Conversa
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Número do WhatsApp *</label>
+                        <input type="text" class="form-control" id="new-contact-number" 
+                               placeholder="Ex: 5511999999999 ou (11) 99999-9999"
+                               maxlength="20">
+                        <div class="form-text">
+                            Digite o número com código do país (55 para Brasil).<br>
+                            Formato: 5511999999999 ou pode usar (11) 99999-9999
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Nome (opcional)</label>
+                        <input type="text" class="form-control" id="new-contact-name" 
+                               placeholder="Nome do contato">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Mensagem *</label>
+                        <textarea class="form-control" id="new-contact-message" rows="4" 
+                                  placeholder="Digite sua mensagem aqui..." required></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Mídia (opcional)</label>
+                        <input type="file" class="form-control" id="new-contact-media" 
+                               accept="image/*,video/*,audio/*,.pdf,.doc,.docx">
+                        <div class="form-text">Imagem, vídeo, áudio ou documento (máx. 16MB)</div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Importante:</strong> O contato será criado automaticamente e a mensagem será enviada.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="sendToNewContact()">
+                        <i class="bi bi-send"></i> Enviar Mensagem
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ✅ ADICIONAR AQUI - ANTES DOS SCRIPTS -->
+<div class="row mt-4" style="display: none;" id="admin-monitoring">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">🔄 Sincronização de Sessões</h5>
+        <div>
+          <button class="btn btn-sm btn-outline-primary" onclick="checkSessionHealth()">
+            <i class="bi bi-heart-pulse"></i> Verificar Saúde
+          </button>
+          <button class="btn btn-sm btn-warning" onclick="forceSyncSessions()">
+            <i class="bi bi-arrow-clockwise"></i> Forçar Sync
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="session-health-status">
+          <div class="text-center text-muted">
+            <i class="bi bi-hourglass-split"></i> Carregando status...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+ <script>
+        // Variáveis globais do usuário
+        window.currentUser = {
+            id: <%= user.id %>,
+            name: '<%= user.name %>',
+            role: '<%= user.role %>',
+            sector: '<%= user.sector %>',
+            signature: '<%= user.signature || "" %>'
+        };
+        
+        // FUNÇÕES DO PERFIL
+        function showProfile() {
+            $('#profileModal').modal('show');
+            loadProfileData();
+        }
+        
+        function loadProfileData() {
+            $('#profile-name').val(window.currentUser.name);
+            $('#profile-email').val('<%= user.email %>');
+            $('#profile-sector').val(window.currentUser.sector);
+            $('#profile-signature').val(window.currentUser.signature);
+            $('#profile-role').text(window.currentUser.role);
+        }
+        
+        async function saveProfile() {
+            const profileData = {
+                name: $('#profile-name').val(),
+                email: $('#profile-email').val(),
+                sector: $('#profile-sector').val(),
+                signature: $('#profile-signature').val()
+            };
+            
+            try {
+                const response = await fetch('/api/profile', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(profileData)
+                });
+                
+                if (response.ok) {
+                    window.currentUser.name = profileData.name;
+                    window.currentUser.sector = profileData.sector;
+                    window.currentUser.signature = profileData.signature;
+                    
+                    alert('Perfil atualizado com sucesso!');
+                    $('#profileModal').modal('hide');
+                    location.reload();
+                } else {
+                    const error = await response.json();
+                    alert('Erro ao salvar perfil: ' + error.message);
+                }
+            } catch (error) {
+                console.error('Erro ao salvar perfil:', error);
+                alert('Erro ao salvar perfil');
+            }
+        }
+        
+        async function changePassword() {
+            const currentPassword = $('#current-password').val();
+            const newPassword = $('#new-password').val();
+            const confirmPassword = $('#confirm-password').val();
+            
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                alert('Preencha todos os campos de senha');
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                alert('A nova senha e a confirmação não coincidem');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                alert('A nova senha deve ter no mínimo 6 caracteres');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/change-password', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        currentPassword: currentPassword,
+                        newPassword: newPassword
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('Senha alterada com sucesso!');
+                    $('#password-form')[0].reset();
+                } else {
+                    const error = await response.json();
+                    alert('Erro ao alterar senha: ' + error.message);
+                }
+            } catch (error) {
+                console.error('Erro ao alterar senha:', error);
+                alert('Erro ao alterar senha');
+            }
+        }
+    </script>
+    <script src="/app.js"></script>
+    <script src="/app2.js"></script>
+    
+    <!-- Script de Gerenciamento de Usuários -->
+    <script>
+    // Funções de gerenciamento de usuários
+    function showUsers() {
+        $('#usersModal').modal('show');
+        loadUsers();
+    }
+
+    async function loadUsers() {
+        try {
+            const users = await $.get('/api/users');
+            const $list = $('#users-list');
+            $list.empty();
+            
+            users.forEach(user => {
+                const $row = $(`
+                    <tr>
+                        <td>${user.name}</td>
+                        <td>${user.email}</td>
+                        <td><span class="badge bg-primary">${user.role}</span></td>
+                        <td><span class="badge bg-info">${user.sector || 'N/A'}</span></td>
+                        <td>
+                            <span class="badge bg-${user.is_active ? 'success' : 'danger'}">
+                                ${user.is_active ? 'Ativo' : 'Inativo'}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-warning" onclick="toggleUserStatus(${user.id}, ${user.is_active})">
+                                <i class="bi bi-${user.is_active ? 'x-circle' : 'check-circle'}"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `);
+                $list.append($row);
+            });
+        } catch (error) {
+            console.error('Erro ao carregar usuários:', error);
+            alert('Erro ao carregar usuários!');
+        }
+    }
+
+    // Criar novo usuário
+    $(document).ready(function() {
+        $('#new-user-form').on('submit', async function(e) {
+            e.preventDefault();
+            
+            const password = $('#new-user-password').val();
+            const confirmPassword = $('#new-user-password-confirm').val();
+            
+            if (password !== confirmPassword) {
+                alert('As senhas não coincidem!');
+                return;
+            }
+            
+            if (password.length < 6) {
+                alert('A senha deve ter no mínimo 6 caracteres!');
+                return;
+            }
+            
+            try {
+                const response = await $.post('/api/users', {
+                    name: $('#new-user-name').val(),
+                    email: $('#new-user-email').val(),
+                    password: password,
+                    role: $('#new-user-role').val(),
+                    sector: $('#new-user-sector').val(),
+                    signature: $('#new-user-signature').val()
+                });
+                
+                if (window.showNotification) {
+                    showNotification('Sucesso', 'Usuário criado com sucesso!', 'success');
+                } else {
+                    alert('Usuário criado com sucesso!');
+                }
+                
+                $('#new-user-form')[0].reset();
+                loadUsers();
+            } catch (error) {
+                console.error('Erro ao criar usuário:', error);
+                const errorMsg = error.responseJSON?.error || 'Erro ao criar usuário';
+                
+                if (window.showNotification) {
+                    showNotification('Erro', errorMsg, 'error');
+                } else {
+                    alert('Erro: ' + errorMsg);
+                }
+            }
+        });
+    });
+
+    // Ativar/Desativar usuário
+    async function toggleUserStatus(userId, currentStatus) {
+        if (!confirm(`Deseja ${currentStatus ? 'desativar' : 'ativar'} este usuário?`)) {
+            return;
+        }
+        
+        try {
+            await $.ajax({
+                url: `/api/users/${userId}/toggle`,
+                method: 'PUT',
+                data: { is_active: !currentStatus }
+            });
+            
+            loadUsers();
+            
+            if (window.showNotification) {
+                showNotification('Sucesso', `Usuário ${currentStatus ? 'desativado' : 'ativado'}!`, 'success');
+            } else {
+                alert(`Usuário ${currentStatus ? 'desativado' : 'ativado'}!`);
+            }
+        } catch (error) {
+            console.error('Erro ao alterar status:', error);
+            
+            if (window.showNotification) {
+                showNotification('Erro', 'Erro ao alterar status', 'error');
+            } else {
+                alert('Erro ao alterar status do usuário!');
+            }
+        }
+    }
+    </script>
+       <script>
+    // Preview da cor da tag em tempo real
+    $(document).ready(function() {
+        $('#new-tag-color').on('input', function() {
+            const color = $(this).val();
+            $('#tag-preview').css('background-color', color);
+        });
+        
+        $('#new-tag-name').on('input', function() {
+            const name = $(this).val() || 'Exemplo';
+            $('#tag-preview').text(name);
+        });
+    });
+    </script>
+    <script>
+// ✅ MOSTRAR APENAS PARA ADMINS
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.currentUser && window.currentUser.role === 'admin') {
+    document.getElementById('admin-monitoring').style.display = 'block';
+    checkSessionHealth();
+    
+    // Verificar automaticamente a cada 5 minutos
+    setInterval(checkSessionHealth, 300000);
+  }
+});
+
+async function checkSessionHealth() {
+  try {
+    const response = await fetch('/api/sessions/health');
+    const health = await response.json();
+    
+    const statusDiv = document.getElementById('session-health-status');
+    
+    let statusColor = 'success';
+    let statusIcon = 'bi-check-circle';
+    if (health.status === 'warning') {
+      statusColor = 'warning';
+      statusIcon = 'bi-exclamation-triangle';
+    }
+    if (health.status === 'error') {
+      statusColor = 'danger';
+      statusIcon = 'bi-x-circle';
+    }
+    if (health.status === 'initializing') {
+      statusColor = 'info';
+      statusIcon = 'bi-hourglass-split';
+    }
+    
+    let html = `
+      <div class="alert alert-${statusColor}">
+        <h6><i class="bi ${statusIcon}"></i> Status: ${health.status.toUpperCase()}</h6>
+        <div class="row">
+          <div class="col-md-6">
+            <strong>🗄️ Banco de Dados:</strong><br>
+            <small>
+              Total: ${health.database?.total || 0} | 
+              Conectadas: ${health.database?.connected || 0} | 
+              Conectando: ${health.database?.connecting || 0} | 
+              Desconectadas: ${health.database?.disconnected || 0}
+            </small>
+          </div>
+          <div class="col-md-6">
+            <strong>💾 Memória:</strong><br>
+            <small>
+              Total: ${health.memory?.total || 0} | 
+              Ativas: ${health.memory?.active || 0}
+            </small>
+          </div>
+        </div>
+        <small class="text-muted d-block mt-2">
+          Última verificação: ${new Date(health.timestamp).toLocaleString('pt-BR')}
+        </small>
+      </div>
+    `;
+    
+    if (health.inconsistencies && health.inconsistencies.length > 0) {
+      html += '<div class="mt-3">';
+      html += '<h6 class="text-warning"><i class="bi bi-exclamation-triangle"></i> Inconsistências Detectadas:</h6>';
+      html += '<div class="table-responsive">';
+      html += '<table class="table table-sm table-striped">';
+      html += '<thead><tr><th>Sessão</th><th>Problema</th></tr></thead><tbody>';
+      
+      health.inconsistencies.forEach(issue => {
+        let problemText = '';
+        switch(issue.issue) {
+          case 'connected_in_db_but_not_in_memory':
+            problemText = 'Conectada no banco mas não na memória';
+            break;
+          case 'active_in_memory_but_disconnected_in_db':
+            problemText = 'Ativa na memória mas desconectada no banco';
+            break;
+          case 'exists_in_memory_but_not_in_db':
+            problemText = 'Existe na memória mas não no banco';
+            break;
+          default:
+            problemText = issue.issue;
+        }
+        html += `<tr><td><strong>${issue.name}</strong></td><td>${problemText}</td></tr>`;
+      });
+      
+      html += '</tbody></table></div>';
+      html += '<button class="btn btn-warning btn-sm" onclick="forceSyncSessions()">🔧 Corrigir Automaticamente</button>';
+      html += '</div>';
+    }
+    
+    statusDiv.innerHTML = html;
+    
+  } catch (error) {
+    console.error('Erro ao verificar saúde:', error);
+    document.getElementById('session-health-status').innerHTML = 
+      '<div class="alert alert-danger"><i class="bi bi-x-circle"></i> Erro ao verificar saúde das sessões</div>';
+  }
+}
+
+async function forceSyncSessions() {
+  try {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="bi bi-hourglass-split"></i> Sincronizando...';
+    button.disabled = true;
+    
+    const response = await fetch('/api/sessions/force-sync', { method: 'POST' });
+    const result = await response.json();
+    
+    if (result.success) {
+      if (window.showNotification) {
+        showNotification('Sucesso', 'Sincronização executada com sucesso!', 'success');
+      } else {
+        alert('Sincronização executada com sucesso!');
+      }
+      setTimeout(checkSessionHealth, 2000);
+    } else {
+      throw new Error(result.error || 'Erro desconhecido');
+    }
+  } catch (error) {
+    console.error('Erro na sincronização:', error);
+    if (window.showNotification) {
+      showNotification('Erro', 'Falha na sincronização: ' + error.message, 'error');
+    } else {
+      alert('Falha na sincronização: ' + error.message);
+    }
+  } finally {
+    const button = event.target;
+    button.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Forçar Sync';
+    button.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

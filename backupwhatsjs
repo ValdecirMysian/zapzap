@@ -1,0 +1,1509 @@
+const wppconnect = require('@wppconnect-team/wppconnect');
+const { db } = require('./database');
+const fs = require('fs');
+const path = require('path');
+
+// Verificação inicial do Puppeteer (simplificada)
+console.log('🔍 Verificando Puppeteer...');
+try {
+  const puppeteer = require('puppeteer');
+  console.log('✅ Puppeteer disponível - versão:', puppeteer.version || 'N/A');
+} catch (error) {
+  console.error('❌ Puppeteer não encontrado:', error.message);
+}
+
+// Armazenar clientes WhatsApp ativos
+const sessions = new Map();
+
+// Cache para controlar mensagens automáticas (evitar spam)
+const lastAutoMessages = new Map();
+
+// Configurações com Puppeteer otimizado e novo Headless
+const config = {
+  folderNameToken: 'tokens',
+  mkdirFolderToken: true,
+  headless: "new", // MUDANÇA: Usar novo modo Headless
+  devtools: false,
+  useChrome: true,
+  debug: false,
+  logQR: false,
+  browserWS: '',
+  browserArgs: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-gpu',
+    '--disable-web-security',
+    '--disable-features=VizDisplayCompositor',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-extensions',
+    '--disable-plugins',
+    '--disable-default-apps',
+    '--no-default-browser-check',
+    '--disable-sync'
+  ],
+  puppeteerOptions: {
+    headless: "new", // MUDANÇA: Novo modo Headless
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox', 
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-web-security',
+      '--disable-features=VizDisplayCompositor',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-background-timer-throttling',
+      '--no-default-browser-check',
+      '--disable-sync'
+    ],
+    ignoreDefaultArgs: ['--disable-extensions'],
+    defaultViewport: { width: 1366, height: 768 },
+    timeout: 60000
+  },
+  disableWelcome: true,
+  updatesLog: false,
+  autoClose: 60000,
+  tokenStore: 'file'
+};
+
+// Classe para gerenciar WhatsApp
+class WhatsAppService {
+  constructor(io) {
+    this.io = io;
+    this.initialize();
+    this.startCacheCleanup();
+  }
+
+  // Método de inicialização assíncrono
+  async initialize() {
+    try {
+      console.log('🚀 Inicializando WhatsApp Service...');
+      
+      // Fazer limpeza primeiro
+      await this.cleanupOnStart();
+      
+      // Depois inicializar sessões
+      await this.initializeSessions();
+      
+      console.log('✅ WhatsApp Service inicializado com sucesso');
+    } catch (error) {
+      console.error('❌ Erro na inicialização do WhatsApp Service:', error);
+    }
+  }
+
+  // Método para limpeza suave (sem matar processos)
+  async killOrphanChromeProcesses() {
+    try {
+      console.log('🧹 Verificando processos Chrome órfãos...');
+      // Apenas log - não mata processos para evitar interferir com Chrome pessoal
+      console.log('✅ Limpeza suave concluída');
+    } catch (error) {
+      console.log('⚠️ Erro na verificação:', error.message);
+    }
+  }
+
+  // Limpeza inicial ao iniciar o serviço
+  async cleanupOnStart() {
+    try {
+      console.log('🧹 Iniciando limpeza de recursos órfãos...');
+      
+      // Matar processos Chrome órfãos (com await)
+      await this.killOrphanChromeProcesses();
+      
+      // Aguardar um pouco para garantir que os processos foram finalizados
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Limpar pastas de browser-data antigas
+      const fs = require('fs');
+      const path = require('path');
+      
+      const browserDataBaseDir = path.resolve('./browser-data');
+      if (fs.existsSync(browserDataBaseDir)) {
+        try {
+          if (fs.rmSync) {
+            fs.rmSync(browserDataBaseDir, { recursive: true, force: true });
+          } else {
+            // Fallback para versões mais antigas do Node.js
+            this.removeDirectoryRecursive(browserDataBaseDir);
+          }
+          console.log('🧹 Pasta browser-data limpa');
+        } catch (rmError) {
+          console.log('⚠️ Erro ao remover browser-data, tentando método alternativo...');
+          this.removeDirectoryRecursive(browserDataBaseDir);
+        }
+      }
+      
+      // Limpar tokens antigos também
+      const tokensDir = path.resolve('./tokens');
+      if (fs.existsSync(tokensDir)) {
+        try {
+          const tokenFolders = fs.readdirSync(tokensDir);
+          for (const folder of tokenFolders) {
+            const folderPath = path.join(tokensDir, folder);
+            if (fs.statSync(folderPath).isDirectory()) {
+              if (fs.rmSync) {
+                fs.rmSync(folderPath, { recursive: true, force: true });
+              } else {
+                this.removeDirectoryRecursive(folderPath);
+              }
+              console.log(`🧹 Token folder limpo: ${folder}`);
+            }
+          }
+        } catch (tokenError) {
+          console.log('⚠️ Erro ao limpar tokens:', tokenError.message);
+        }
+      }
+      
+      // Recriar estrutura de pastas
+      fs.mkdirSync(browserDataBaseDir, { recursive: true });
+      fs.mkdirSync(tokensDir, { recursive: true });
+      
+      console.log('✅ Limpeza inicial concluída com sucesso');
+      
+    } catch (error) {
+      console.error('❌ Erro na limpeza inicial:', error);
+      // Não falhar a inicialização por causa da limpeza
+      console.log('⚠️ Continuando inicialização mesmo com erro na limpeza...');
+    }
+  }
+
+  // Função auxiliar para remoção recursiva (compatibilidade)
+  removeDirectoryRecursive(dirPath) {
+    const fs = require('fs');
+    const path = require('path');
+    
+    try {
+      if (fs.existsSync(dirPath)) {
+        const files = fs.readdirSync(dirPath);
+        files.forEach((file) => {
+          const currentPath = path.join(dirPath, file);
+          if (fs.lstatSync(currentPath).isDirectory()) {
+            this.removeDirectoryRecursive(currentPath); // Recursão
+          } else {
+            fs.unlinkSync(currentPath); // Remover arquivo
+          }
+        });
+        fs.rmdirSync(dirPath); // Remover diretório vazio
+        console.log(`🧹 Diretório removido: ${dirPath}`);
+      }
+    } catch (error) {
+      console.error(`❌ Erro ao remover diretório ${dirPath}:`, error.message);
+    }
+  }
+
+  // Inicializar sessões existentes
+  async initializeSessions() {
+    try {
+      const dbSessions = await db.sessions.list();
+      for (const session of dbSessions) {
+        if (session.status === 'connected') {
+          // Tentar reconectar sessões que estavam conectadas
+          this.createSession(session.id, session.name);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao inicializar sessões:', error);
+    }
+  }
+
+  // Criar nova sessão com isolamento para múltiplas instâncias
+  async createSession(sessionId, sessionName) {
+    try {
+      console.log(`🔄 Iniciando sessão: ${sessionName}`);
+      
+      // Atualizar status no banco
+      await db.sessions.update(sessionId, { status: 'connecting' });
+      
+      // Configuração específica para esta sessão (ISOLAMENTO)
+      const sessionConfig = {
+        ...config,
+        session: sessionName,
+        folderNameToken: `tokens/${sessionName}`, // Pasta específica
+        puppeteerOptions: {
+          ...config.puppeteerOptions,
+          userDataDir: `./browser-data/${sessionName}`, // Dados únicos do browser
+          args: [
+            ...config.browserArgs,
+            `--user-data-dir=./browser-data/${sessionName}`, // Isolamento completo
+            `--remote-debugging-port=${9222 + sessionId}` // Porta única por sessão
+          ]
+        },
+        browserArgs: [
+          ...config.browserArgs,
+          `--user-data-dir=./browser-data/${sessionName}`,
+          `--remote-debugging-port=${9222 + sessionId}`,
+          `--profile-directory=Profile${sessionId}` // Perfil único
+        ],
+        statusFind: (statusSession, session) => {
+          console.log(`Status da sessão ${sessionName}: ${statusSession}`);
+          this.handleStatus(sessionId, statusSession);
+        },
+        catchQR: (base64Qr, asciiQR) => {
+          console.log(`📱 QR Code gerado para ${sessionName}`);
+          this.handleQRCode(sessionId, base64Qr);
+        }
+      };
+
+      // Garantir que a pasta existe
+      const fs = require('fs');
+      const path = require('path');
+      const browserDataDir = `./browser-data/${sessionName}`;
+      if (!fs.existsSync(browserDataDir)) {
+        fs.mkdirSync(browserDataDir, { recursive: true });
+        console.log(`📁 Pasta criada: ${browserDataDir}`);
+      }
+      
+      // Configurar callbacks
+      const client = await wppconnect.create(sessionConfig);
+
+      // Armazenar cliente
+      sessions.set(sessionId, {
+        client,
+        name: sessionName,
+        status: 'connected'
+      });
+
+      // Configurar listeners
+      this.setupListeners(sessionId, client);
+
+      // Atualizar status no banco
+      const info = await client.getHostDevice();
+      await db.sessions.update(sessionId, {
+        status: 'connected',
+        number: info.id.user,
+        connected_at: new Date()
+      });
+
+      // Emitir evento de conexão
+      this.io.emit('session:connected', {
+        sessionId,
+        sessionName,
+        number: info.id.user
+      });
+
+      console.log(`✅ Sessão ${sessionName} conectada!`);
+      return client;
+
+    } catch (error) {
+      console.error(`❌ Erro ao criar sessão ${sessionName}:`, error);
+      await db.sessions.update(sessionId, { status: 'disconnected' });
+      throw error;
+    }
+  }
+
+  // Configurar listeners de mensagens
+  setupListeners(sessionId, client) {
+    // Mensagens recebidas
+    client.onMessage(async (message) => {
+      try {
+        await this.handleIncomingMessage(sessionId, message);
+      } catch (error) {
+        console.error('Erro ao processar mensagem:', error);
+      }
+    });
+
+    // Status da mensagem
+    client.onAck(async (ack) => {
+      this.io.emit('message:ack', {
+        sessionId,
+        messageId: ack.id,
+        status: ack.ack
+      });
+    });
+
+    // Presença (digitando)
+    client.onPresenceChanged((presenceData) => {
+      this.io.emit('contact:presence', {
+        sessionId,
+        number: presenceData.id,
+        presence: presenceData.isOnline ? 'online' : 'offline',
+        lastSeen: presenceData.t
+      });
+    });
+
+    // Estado da conexão
+    client.onStateChange((state) => {
+      console.log(`Estado da sessão ${sessionId}: ${state}`);
+      if (state === 'CONFLICT' || state === 'UNPAIRED' || state === 'UNLAUNCHED') {
+        this.handleDisconnect(sessionId);
+      }
+    });
+  }
+
+  // Buscar avatar com múltiplas tentativas e métodos
+  async getContactAvatarWithRetry(client, number, contactName, maxRetries = 3) {
+    console.log(`🔍 Buscando avatar para: ${contactName || number}`);
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Delay progressivo entre tentativas
+        if (attempt > 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+          console.log(`🔄 Tentativa ${attempt + 1} para ${contactName || number}`);
+        }
+        
+        // Método 1: getProfilePicFromServer
+        try {
+          const avatarUrl = await client.getProfilePicFromServer(number);
+          if (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.startsWith('http')) {
+            console.log(`✅ Avatar encontrado (método 1): ${contactName || number}`);
+            return avatarUrl;
+          }
+        } catch (e) {
+          console.log(`⚠️ Método 1 falhou: ${e.message}`);
+        }
+        
+        // Método 2: getContact com fallback
+        try {
+          const contact = await client.getContact(number);
+          if (contact && contact.profilePicThumbObj && contact.profilePicThumbObj.eurl) {
+            console.log(`✅ Avatar encontrado (método 2): ${contactName || number}`);
+            return contact.profilePicThumbObj.eurl;
+          }
+        } catch (e) {
+          console.log(`⚠️ Método 2 falhou: ${e.message}`);
+        }
+        
+        // Método 3: Buscar dados do perfil
+        try {
+          const profilePic = await client.getProfilePicUrl(number);
+          if (profilePic && profilePic !== 'undefined') {
+            console.log(`✅ Avatar encontrado (método 3): ${contactName || number}`);
+            return profilePic;
+          }
+        } catch (e) {
+          console.log(`⚠️ Método 3 falhou: ${e.message}`);
+        }
+        
+      } catch (error) {
+        console.log(`❌ Tentativa ${attempt + 1} falhou para ${contactName || number}: ${error.message}`);
+      }
+    }
+    
+    console.log(`❌ Sem avatar disponível: ${contactName || number} (após ${maxRetries} tentativas)`);
+    return null;
+  }
+
+  // Processar mensagem recebida - VERSÃO CORRIGIDA
+  async handleIncomingMessage(sessionId, message) {
+    console.log('Mensagem recebida:', message.from, message.body?.substring(0, 50) || '[Mídia]');
+    console.log('Tipo de mensagem:', message.type, 'Mimetype:', message.mimetype);
+    
+    // Ignorar mensagens de grupos e status
+    if (message.isGroupMsg || message.isStatusReply) return;
+
+    // Buscar ou criar contato
+    const contact = await db.contacts.findOrCreate(
+      message.from,
+      message.sender?.pushname || message.sender?.verifiedName || message.from.split('@')[0]
+    );
+
+    // Buscar/atualizar avatar sempre (pode ter mudado)
+    // Buscar/atualizar avatar com retry melhorado
+    try {
+      const session = sessions.get(sessionId);
+      if (session && session.client) {
+        // Só buscar avatar se não tiver ou for muito antigo (7 dias)
+        const shouldUpdateAvatar = !contact.avatar || 
+          !contact.avatar_updated_at || 
+          (new Date() - new Date(contact.avatar_updated_at)) > (7 * 24 * 60 * 60 * 1000);
+        
+        if (shouldUpdateAvatar) {
+          const avatarUrl = await this.getContactAvatarWithRetry(
+            session.client, 
+            message.from, 
+            contact.name || contact.number
+          );
+          
+          if (avatarUrl && contact.avatar !== avatarUrl) {
+            await db.contacts.update(contact.id, { 
+              avatar: avatarUrl,
+              avatar_updated_at: new Date()
+            });
+            contact.avatar = avatarUrl;
+
+            console.log(`✅ Avatar atualizado para ${contact.name || contact.number}`);
+            console.log(`📸 URL: ${avatarUrl.substring(0, 100)}...`);
+
+            // Notificar o frontend em tempo real
+            this.io.emit('contact:update', {
+              id: contact.id,
+              avatar: avatarUrl
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Falha ao obter avatar:', err.message);
+    }
+
+    // Atualizar última mensagem do contato
+    await db.contacts.update(contact.id, {
+      last_message: message.body?.substring(0, 100) || '[Mídia]',
+      last_message_at: new Date()
+    });
+
+   // Determinar tipo da mensagem e processar conteúdo
+    let messageType = 'text';
+    let mediaUrl = null;
+    let finalContent = message.body || '';
+
+    console.log('🔍 PROCESSANDO MENSAGEM:', {
+      type: message.type,
+      mimetype: message.mimetype,
+      hasBody: !!message.body,
+      bodyLength: message.body?.length || 0,
+      hasCaption: !!message.caption,
+      isMedia: !!message.isMedia
+    });
+
+    // Identificar tipo de mídia - VERSÃO CORRIGIDA E SIMPLIFICADA
+    if (message.type === 'image') {
+      messageType = 'image';
+      finalContent = message.caption || '';
+    } else if (message.type === 'video') {
+      messageType = 'video';
+      finalContent = message.caption || '';
+    } else if (message.type === 'audio' || message.type === 'ptt') {
+      messageType = 'audio';
+      finalContent = '';
+    } else if (message.type === 'document') {
+      messageType = 'document';
+      finalContent = message.caption || message.filename || 'Documento';
+    } else if (message.type === 'location') {
+      messageType = 'location';
+      if (message.lat && message.lng) {
+        finalContent = `📍 Localização compartilhada\nLatitude: ${message.lat}\nLongitude: ${message.lng}`;
+        if (message.loc) {
+          finalContent += `\nEndereço: ${message.loc}`;
+        }
+      } else {
+        finalContent = '📍 Localização compartilhada';
+      }
+    } else if (message.type === 'vcard' || message.type === 'contact_card') {
+      messageType = 'contact';
+      if (message.vcardList && message.vcardList.length > 0) {
+        const contact = message.vcardList[0];
+        finalContent = `👤 Contato compartilhado\nNome: ${contact.displayName || contact.formattedName || 'N/A'}`;
+        if (contact.vcard) {
+          const phoneMatch = contact.vcard.match(/TEL[^:]*:([^\r\n]+)/);
+          if (phoneMatch) {
+            finalContent += `\nTelefone: ${phoneMatch[1]}`;
+          }
+        }
+      } else {
+        finalContent = '👤 Contato compartilhado';
+      }
+    } else if (message.type === 'sticker') {
+      messageType = 'sticker';
+      finalContent = '';
+    }
+
+    // Processar mídia - LÓGICA COMPLETAMENTE REESCRITA
+    if (['image', 'video', 'audio', 'document', 'sticker'].includes(messageType)) {
+      console.log('📎 Processando mídia:', messageType);
+      
+      try {
+        // SEMPRE tentar fazer download primeiro
+        message.sessionId = sessionId;
+        mediaUrl = await this.downloadMedia(message);
+        
+        if (mediaUrl) {
+          console.log('✅ Mídia baixada com sucesso:', mediaUrl);
+        } else {
+          console.log('⚠️ Download falhou, tentando alternativas...');
+          
+          // Fallback 1: Base64 para imagens pequenas/médias
+          if ((messageType === 'image' || messageType === 'sticker') && 
+              message.body && 
+              message.body.length > 500 && 
+              message.body.length < 5000000) { // Até 5MB
+            
+            // Verificar se é base64 válido
+            const base64Pattern = /^[A-Za-z0-9+/]+=*$/;
+            if (base64Pattern.test(message.body)) {
+              mediaUrl = `data:${message.mimetype || 'image/jpeg'};base64,${message.body}`;
+              console.log('🔄 Usando base64 como fallback');
+            }
+          }
+          
+          // Fallback 2: Áudio em base64
+          if (messageType === 'audio' && message.body && message.body.length > 1000) {
+            const base64Pattern = /^[A-Za-z0-9+/]+=*$/;
+            if (base64Pattern.test(message.body)) {
+              mediaUrl = `data:${message.mimetype || 'audio/ogg'};base64,${message.body}`;
+              console.log('🔄 Áudio base64 usado como fallback');
+            }
+          }
+          
+          // Se ainda não tem mediaUrl, marcar como erro
+          if (!mediaUrl) {
+            console.log('❌ Falha total ao processar mídia');
+            finalContent = `[${messageType.toUpperCase()} - Erro ao baixar]`;
+          }
+        }
+        
+      } catch (error) {
+        console.error('❌ Erro ao processar mídia:', error);
+        finalContent = `[${messageType.toUpperCase()} - Erro: ${error.message}]`;
+      }
+    }
+
+    // Salvar mensagem no banco
+    const messageId = await db.messages.create({
+      session_id: sessionId,
+      contact_id: contact.id,
+      content: finalContent,
+      type: messageType,
+      media_url: mediaUrl,
+      is_from_me: false,
+      status: 'received'
+    });
+
+    // Incrementar contador de não lidas
+    await db.query(
+      'UPDATE contacts SET unread_count = unread_count + 1 WHERE id = ?',
+      [contact.id]
+    );
+
+    // Verificar se contato está em atendimento
+    const activeQueue = await db.query(
+      'SELECT * FROM queues WHERE contact_id = ? AND status IN (?, ?) ORDER BY id DESC LIMIT 1',
+      [contact.id, 'waiting', 'attending']
+    );
+
+   // Verificar se há enquete ativa para este contato
+    const activePoll = await this.checkActivePoll(contact.id, message.body);
+    
+    // Se não está em atendimento, adicionar à fila
+    if (activeQueue.length === 0 && !activePoll) {
+      const sector = await this.determineSector(message.body || '');
+      
+      // Criar fila primeiro
+      const queueId = await db.queues.create(contact.id, sector);
+      
+      // **CORREÇÃO: SEMPRE TENTAR ENVIAR MENSAGEM DE BOAS-VINDAS**
+      try {
+        // Verificar se mensagens automáticas estão habilitadas
+        const { db: database } = require('./database');
+        const autoSettings = await database.settings.getAutoMessages();
+        
+        if (autoSettings.welcome.enabled) {
+          // Verificar horário comercial
+          const { businessHoursHelpers } = require('./auth');
+          const isBusinessTime = await businessHoursHelpers.isBusinessHours();
+          
+          if (!isBusinessTime && autoSettings.welcome.businessHoursOnly) {
+            // Fora do horário: usar mensagem de horário comercial OU mensagem específica
+            if (autoSettings.welcome.afterHoursMessage) {
+              await this.sendWelcomeMessage(sessionId, message.from, false); // false = fora do horário
+            } else {
+              await this.sendBusinessHoursMessage(sessionId, message.from);
+            }
+          } else {
+            // Dentro do horário: enviar mensagem de boas-vindas normal
+            await this.sendWelcomeMessage(sessionId, message.from, true); // true = horário comercial
+          }
+          
+          console.log(`✅ Mensagem automática enviada para ${contact.number} - setor ${sector}`);
+        } else {
+          console.log(`ℹ️ Mensagens de boas-vindas desabilitadas - ${contact.number}`);
+        }
+      } catch (welcomeError) {
+        console.error('❌ Erro ao enviar mensagem de boas-vindas:', welcomeError);
+      }
+      
+      console.log(`Contato ${contact.number} adicionado à fila do setor ${sector}`);
+    }
+
+    // Emitir evento para frontend
+    this.io.emit('message:received', {
+      sessionId,
+      messageId,
+      contact: {
+        id: contact.id,
+        number: contact.number,
+        name: contact.name
+      },
+      message: {
+        content: finalContent,
+        type: messageType,
+        mediaUrl: mediaUrl,
+        timestamp: new Date()
+      }
+    });
+  }
+
+  // Determinar setor baseado no conteúdo
+  async determineSector(content) {
+    if (!content) return 'Geral';
+
+    const lowerContent = content.toLowerCase();
+    
+    // Palavras-chave por setor
+    const keywords = {
+      'Medicamento': ['remedio', 'medicamento', 'receita', 'generico', 'farmaco', 'comprimido', 'capsula'],
+      'Perfumaria 1': ['perfume', 'cosmético', 'shampoo', 'creme', 'hidratante', 'sabonete'],
+      'Perfumaria 2': ['maquiagem', 'batom', 'base', 'rímel', 'sombra', 'blush'],
+      'Suplementos': ['vitamina', 'suplemento', 'whey', 'proteina', 'creatina', 'omega'],
+      'Dermocosméticos': ['dermatite', 'acne', 'pele', 'dermatologico', 'antienvelhecimento'],
+      'Caixa': ['pagar', 'pagamento', 'valor', 'preço', 'quanto', 'custo', 'desconto']
+    };
+
+    for (const [sector, words] of Object.entries(keywords)) {
+      if (words.some(word => lowerContent.includes(word))) {
+        return sector;
+      }
+    }
+
+    return 'Geral';
+  }
+
+  // Baixar mídia - VERSÃO CORRIGIDA E ROBUSTA
+  async downloadMedia(message) {
+    try {
+      const session = sessions.get(message.sessionId);
+      if (!session || !session.client) {
+        console.error('❌ Sessão não encontrada para baixar mídia');
+        return null;
+      }
+
+      console.log('📥 Tentando baixar mídia...', {
+        type: message.type,
+        mimetype: message.mimetype,
+        hasId: !!message.id
+      });
+
+      // Tentar diferentes métodos de download
+      let buffer = null;
+      
+      // Método 1: decryptFile (padrão)
+      try {
+        buffer = await session.client.decryptFile(message);
+        console.log('✅ Download via decryptFile bem-sucedido');
+      } catch (decryptError) {
+        console.log('⚠️ decryptFile falhou:', decryptError.message);
+        
+        // Método 2: downloadMedia (alternativo)
+        try {
+          buffer = await session.client.downloadMedia(message);
+          console.log('✅ Download via downloadMedia bem-sucedido');
+        } catch (downloadError) {
+          console.log('⚠️ downloadMedia também falhou:', downloadError.message);
+          
+          // Método 3: getFileBuffer (se disponível)
+          try {
+            if (session.client.getFileBuffer) {
+              buffer = await session.client.getFileBuffer(message.id);
+              console.log('✅ Download via getFileBuffer bem-sucedido');
+            }
+          } catch (bufferError) {
+            console.log('⚠️ getFileBuffer falhou:', bufferError.message);
+          }
+        }
+      }
+      
+      if (!buffer || buffer.length === 0) {
+        console.error('❌ Todos os métodos de download falharam');
+        return null;
+      }
+
+      // Determinar extensão baseada no mimetype
+      let extension = 'bin';
+      if (message.mimetype) {
+        const mimetypeLower = message.mimetype.toLowerCase();
+        
+        // Mapeamento mais completo de mimetypes
+        const extensionMap = {
+          'image/jpeg': 'jpg',
+          'image/jpg': 'jpg',
+          'image/png': 'png',
+          'image/gif': 'gif',
+          'image/webp': 'webp',
+          'image/bmp': 'bmp',
+          'video/mp4': 'mp4',
+          'video/webm': 'webm',
+          'video/ogg': 'ogv',
+          'video/quicktime': 'mov',
+          'video/avi': 'avi',
+          'audio/ogg': 'ogg',
+          'audio/mpeg': 'mp3',
+          'audio/mp3': 'mp3',
+          'audio/wav': 'wav',
+          'audio/aac': 'aac',
+          'audio/webm': 'webm',
+          'application/pdf': 'pdf',
+          'application/msword': 'doc',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+          'application/vnd.ms-excel': 'xls',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+          'text/plain': 'txt'
+        };
+        
+        extension = extensionMap[mimetypeLower];
+        
+        if (!extension) {
+          // Fallback para extrair da segunda parte do mimetype
+          const parts = mimetypeLower.split('/');
+          if (parts.length > 1) {
+            extension = parts[1].split(';')[0]; // Remove parâmetros extras
+            extension = extension.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'bin';
+          }
+        }
+      }
+      
+      // Determinar extensão por tipo de mensagem se mimetype falhar
+      if (extension === 'bin') {
+        const typeExtensions = {
+          'image': 'jpg',
+          'video': 'mp4',
+          'audio': 'ogg',
+          'document': 'pdf',
+          'sticker': 'webp'
+        };
+        extension = typeExtensions[message.type] || 'bin';
+      }
+      
+      // Gerar nome único do arquivo
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 8);
+      const messageId = message.id ? message.id.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8) : randomId;
+      const filename = `${timestamp}_${messageId}.${extension}`;
+      const filepath = path.join(__dirname, 'uploads', filename);
+      
+      // Garantir que a pasta uploads existe
+      const uploadsDir = path.join(__dirname, 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+        console.log('📁 Pasta uploads criada');
+      }
+      
+      // Salvar arquivo
+      fs.writeFileSync(filepath, buffer);
+      const fileSizeMB = (buffer.length / 1024 / 1024).toFixed(2);
+      console.log(`✅ Mídia salva: ${filename} (${fileSizeMB}MB)`);
+      
+      return `/uploads/${filename}`;
+      
+    } catch (error) {
+      console.error('❌ Erro geral ao baixar mídia:', error);
+      return null;
+    }
+  }
+
+  // Enviar mensagem de boas-vindas
+  async sendWelcomeMessage(sessionId, to, isBusinessTime = null) {
+    try {
+      // Verificar se já enviou mensagem recentemente (últimos 5 minutos)
+      const lastMessageKey = `welcome_${to}`;
+      const lastMessageTime = lastAutoMessages.get(lastMessageKey);
+      const now = Date.now();
+      
+      if (lastMessageTime && (now - lastMessageTime) < 300000) { // 5 minutos
+        console.log(`Mensagem de boas-vindas já enviada recentemente para ${to}`);
+        return;
+      }
+
+      // Mensagem padrão como fallback
+      let welcomeMessage = '👋 Olá! Bem-vindo ao nosso atendimento. Em breve um de nossos atendentes irá lhe atender.';
+      let messageEnabled = true;
+      let messageDelay = 0;
+      
+      // Se isBusinessTime não foi passado, verificar automaticamente
+      if (isBusinessTime === null) {
+        try {
+          const { businessHoursHelpers } = require('./auth');
+          isBusinessTime = await businessHoursHelpers.isBusinessHours();
+        } catch (timeError) {
+          console.log('⚠️ Erro ao verificar horário, assumindo horário comercial');
+          const hour = new Date().getHours();
+          isBusinessTime = hour >= 8 && hour < 18;
+        }
+      }
+      
+      try {
+        // **CORREÇÃO: Forçar recarregamento das configurações sem cache**
+        delete require.cache[require.resolve('./database')];
+        const database = require('./database');
+        
+        console.log('🔄 Recarregando configurações de boas-vindas...');
+        const autoSettings = await database.db.settings.getAutoMessages();
+        
+        console.log('📋 Configurações carregadas:', {
+          enabled: autoSettings.welcome.enabled,
+          message: autoSettings.welcome.message?.substring(0, 50) + '...',
+          afterHours: autoSettings.welcome.afterHoursMessage?.substring(0, 50) + '...'
+        });
+        
+        // Aplicar configurações se carregadas com sucesso
+        messageEnabled = autoSettings.welcome.enabled;
+        if (autoSettings.welcome.message) {
+          welcomeMessage = autoSettings.welcome.message;
+          console.log('✅ Mensagem de boas-vindas atualizada');
+        }
+        if (autoSettings.welcome.afterHoursMessage) {
+          afterHoursMessage = autoSettings.welcome.afterHoursMessage;
+          console.log('✅ Mensagem fora do horário atualizada');
+        }
+        messageDelay = autoSettings.advanced.messageDelay || 0;
+        
+        // Verificar horário comercial
+        try {
+          const authHelpers = require('./auth');
+          isBusinessTime = await authHelpers.businessHoursHelpers.isBusinessHours();
+        } catch (timeError) {
+          console.log('⚠️ Erro ao verificar horário comercial, assumindo horário comercial');
+          const hour = new Date().getHours();
+          isBusinessTime = hour >= 8 && hour < 18;
+        }
+        
+        console.log('📋 Configurações de boas-vindas carregadas');
+      } catch (configError) {
+        console.log('⚠️ Usando configurações padrão:', configError.message);
+        const hour = new Date().getHours();
+        isBusinessTime = hour >= 8 && hour < 18;
+      }
+      
+      // Se mensagens estão desabilitadas
+      if (!messageEnabled) {
+        console.log('ℹ️ Mensagens de boas-vindas desabilitadas');
+        return;
+      }
+      
+      // Escolher mensagem baseada no horário
+      let finalMessage = isBusinessTime ? welcomeMessage : afterHoursMessage;
+      
+      // Processar variáveis básicas
+      const saudacao = this.getSaudacao();
+      finalMessage = finalMessage
+        .replace(/\{\{nome\}\}/g, 'Cliente')
+        .replace(/\{\{saudacao\}\}/g, saudacao)
+        .replace(/\{\{data\}\}/g, new Date().toLocaleDateString('pt-BR'))
+        .replace(/\{\{hora\}\}/g, new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+      
+      console.log(`📤 Enviando boas-vindas (${isBusinessTime ? 'comercial' : 'fora do horário'})`);
+      
+      // Aplicar delay se configurado
+      if (messageDelay > 0) {
+        await new Promise(resolve => setTimeout(resolve, messageDelay * 1000));
+      }
+      
+      // Enviar mensagem
+      await this.sendMessage(sessionId, to, finalMessage);
+      
+      // Registrar que enviou a mensagem
+      lastAutoMessages.set(lastMessageKey, now);
+      console.log(`✅ Mensagem de boas-vindas enviada para ${to}`);
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem de boas-vindas:', error);
+    }
+  }
+
+  // Função auxiliar para obter saudação
+  getSaudacao() {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return 'Bom dia';
+    if (hour >= 12 && hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+  }
+
+  // Enviar mensagem de encerramento
+  async sendGoodbyeMessage(sessionId, to, userSignature = null) {
+    try {
+      // Mensagem padrão como fallback
+      let goodbyeMessage = '👋 Agradecemos seu contato! Caso precise de algo mais, estamos à disposição.';
+      let messageEnabled = true;
+      let includeSignature = false;
+      let includeRating = false;
+      let messageDelay = 0;
+      
+      try {
+        // **CORREÇÃO: Forçar recarregamento das configurações sem cache**
+        delete require.cache[require.resolve('./database')];
+        const database = require('./database');
+        
+        console.log('🔄 Recarregando configurações de despedida...');
+        const autoSettings = await database.db.settings.getAutoMessages();
+        
+        console.log('📋 Configurações carregadas:', {
+          enabled: autoSettings.goodbye.enabled,
+          message: autoSettings.goodbye.message?.substring(0, 50) + '...',
+          includeSignature: autoSettings.goodbye.includeSignature,
+          includeRating: autoSettings.goodbye.includeRating
+        });
+        
+        // Aplicar configurações se carregadas com sucesso
+        messageEnabled = autoSettings.goodbye.enabled;
+        if (autoSettings.goodbye.message) {
+          goodbyeMessage = autoSettings.goodbye.message;
+          console.log('✅ Mensagem de despedida atualizada');
+        }
+        includeSignature = autoSettings.goodbye.includeSignature;
+        includeRating = autoSettings.goodbye.includeRating;
+        messageDelay = autoSettings.advanced.messageDelay || 0;
+        
+        console.log('📋 Configurações de despedida aplicadas');
+      } catch (configError) {
+        console.log('⚠️ Usando configurações padrão de despedida:', configError.message);
+      }
+      
+      // Se mensagens estão desabilitadas
+      if (!messageEnabled) {
+        console.log('ℹ️ Mensagens de despedida desabilitadas');
+        return;
+      }
+      
+      // Processar variáveis básicas
+      const saudacao = this.getSaudacao();
+      let finalMessage = goodbyeMessage
+        .replace(/\{\{nome\}\}/g, 'Cliente')
+        .replace(/\{\{saudacao\}\}/g, saudacao)
+        .replace(/\{\{data\}\}/g, new Date().toLocaleDateString('pt-BR'))
+        .replace(/\{\{hora\}\}/g, new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+      
+      // Adicionar avaliação se habilitado
+      if (includeRating) {
+        finalMessage += '\n\n⭐ Avalie nosso atendimento de 1 a 5 estrelas!';
+      }
+      
+      // Preparar opções de envio
+      const sendOptions = {};
+      if (includeSignature && userSignature) {
+        sendOptions.signature = userSignature;
+      }
+      
+      console.log('📤 Enviando mensagem de despedida');
+      
+      // Aplicar delay se configurado
+      if (messageDelay > 0) {
+        await new Promise(resolve => setTimeout(resolve, messageDelay * 1000));
+      }
+      
+      // Enviar mensagem
+      await this.sendMessage(sessionId, to, finalMessage, sendOptions);
+      
+      console.log(`✅ Mensagem de despedida enviada para ${to}`);
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem de despedida:', error);
+      
+      // Fallback: enviar mensagem básica
+      try {
+        await this.sendMessage(sessionId, to, '👋 Agradecemos seu contato! Caso precise de algo mais, estamos à disposição.');
+        console.log(`✅ Mensagem de despedida fallback enviada para ${to}`);
+      } catch (fallbackError) {
+        console.error('❌ Erro no fallback da mensagem de despedida:', fallbackError);
+      }
+    }
+  }
+
+  // Enviar mensagem de horário comercial
+  async sendBusinessHoursMessage(sessionId, to) {
+    try {
+      // Verificar se já enviou mensagem recentemente (últimos 30 minutos)
+      const lastMessageKey = `business_hours_${to}`;
+      const lastMessageTime = lastAutoMessages.get(lastMessageKey);
+      const now = Date.now();
+      
+      if (lastMessageTime && (now - lastMessageTime) < 1800000) { // 30 minutos
+        console.log(`Mensagem de horário comercial já enviada recentemente para ${to}`);
+        return;
+      }
+      
+      const { businessHoursHelpers } = require('./auth');
+      
+      // Obter mensagem configurada
+      let message = await db.settings.get('business_hours_message');
+      
+      if (!message) {
+        // Mensagem padrão se não configurada
+        message = '🏪 Olá! Nossa farmácia está fechada no momento.\n\n📅 Horário de funcionamento:\nSegunda a Sexta: 8h às 18h\nSábado: 8h às 12h\n\n📝 Sua mensagem foi registrada e responderemos assim que possível.';
+      }
+      
+      // Processar variáveis na mensagem
+      message = await businessHoursHelpers.processBusinessHoursMessage(message);
+      
+      await this.sendMessage(sessionId, to, message, {
+        signature: 'Sistema Automático'
+      });
+      
+      // Registrar que enviou a mensagem
+      lastAutoMessages.set(lastMessageKey, now);
+      console.log(`✅ Mensagem de horário comercial enviada para ${to}`);
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem de horário comercial:', error);
+    }
+  }
+
+  // Enviar mensagem - VERSÃO MELHORADA
+  async sendMessage(sessionId, to, content, options = {}) {
+    try {
+      const session = sessions.get(sessionId);
+      if (!session || !session.client) {
+        throw new Error('Sessão não encontrada ou desconectada');
+      }
+
+      let result;
+      
+      console.log('📤 Enviando mensagem:', { 
+        to: to.substring(0, 20) + '...', 
+        type: options.type || 'text', 
+        hasPath: !!options.path,
+        contentLength: content?.length || 0
+      });
+      
+      // Enviar baseado no tipo
+      if (options.type === 'image' && options.path) {
+        console.log('🖼️ Enviando imagem:', options.path);
+        result = await session.client.sendImage(to, options.path, options.filename || 'image', content || '');
+        
+      } else if (options.type === 'document' && options.path) {
+        console.log('📄 Enviando documento:', options.path);
+        
+        // Verificar se é áudio sendo enviado como documento
+        const isAudio = options.filename && 
+                       (options.filename.includes('audio') || 
+                        options.path.includes('audio') ||
+                        options.filename.match(/\.(ogg|mp3|wav|webm|m4a)$/i));
+        
+        if (isAudio) {
+          console.log('🎵 Áudio detectado - enviando link para reprodução');
+          
+          // Extrair nome do arquivo para criar link público
+          const filename = options.path.split('\\').pop().split('/').pop();
+          const audioUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/uploads/${filename}`;
+          
+          // Enviar link para o áudio
+          result = await session.client.sendText(
+            to, 
+            `🎵 *Mensagem de Voz*\n\n🔗 Clique para ouvir: ${audioUrl}\n\n_Ou acesse o link no seu navegador para reproduzir o áudio_`
+          );
+          console.log('✅ Link de áudio enviado:', audioUrl);
+        } else {
+          result = await session.client.sendFile(to, options.path, options.filename || 'document', content || '');
+        }
+        
+      } else if (options.type === 'audio' && options.path) {
+        console.log('🎵 Enviando áudio:', options.path);
+        
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Verificar se arquivo existe
+        if (!fs.existsSync(options.path)) {
+          throw new Error('Arquivo de áudio não encontrado: ' + options.path);
+        }
+        
+        const fileExtension = path.extname(options.path).toLowerCase();
+        console.log('📁 Extensão do arquivo:', fileExtension);
+        
+        try {
+          console.log('🎵 Enviando áudio como mensagem de voz...');
+          
+          // Ler arquivo como base64
+          const audioBuffer = fs.readFileSync(options.path);
+          const audioBase64 = audioBuffer.toString('base64');
+          
+          // Determinar mimetype correto
+          let mimeType = 'audio/ogg; codecs=opus';
+          if (fileExtension === '.mp3') {
+            mimeType = 'audio/mpeg';
+          } else if (fileExtension === '.wav') {
+            mimeType = 'audio/wav';
+          } else if (fileExtension === '.m4a') {
+            mimeType = 'audio/mp4';
+          } else if (fileExtension === '.webm') {
+            mimeType = 'audio/webm; codecs=opus';
+          }
+          
+          // Criar data URI completo
+          const audioDataUri = `data:${mimeType};base64,${audioBase64}`;
+          
+          // Tentar enviar como PTT/Voice
+          console.log('🎤 Tentando enviar como mensagem de voz...');
+          
+          // Método 1: sendPttFromBase64 (mais comum no wppconnect)
+          if (session.client.sendPttFromBase64) {
+            result = await session.client.sendPttFromBase64(
+              to,
+              audioBase64,
+              'voice-message'
+            );
+            console.log('✅ Áudio enviado via sendPttFromBase64');
+          }
+          // Método 2: sendVoice 
+          else if (session.client.sendVoice) {
+            result = await session.client.sendVoice(
+              to,
+              audioDataUri
+            );
+            console.log('✅ Áudio enviado via sendVoice');
+          }
+          // Método 3: sendAudio com flag PTT
+          else if (session.client.sendAudio) {
+            result = await session.client.sendAudio(
+              to,
+              audioDataUri,
+              'voice-message',
+              '',
+              true // flag PTT
+            );
+            console.log('✅ Áudio enviado via sendAudio com flag PTT');
+          }
+          // Método 4: sendFile com mimetype de áudio
+          else {
+            console.log('⚠️ Nenhum método de áudio nativo encontrado, usando sendFile...');
+            result = await session.client.sendFile(
+              to,
+              audioDataUri,
+              'voice-message',
+              '🎵 Mensagem de voz'
+            );
+            console.log('✅ Áudio enviado via sendFile');
+          }
+          
+          console.log('✅ Áudio PTT enviado com sucesso');
+          
+        } catch (audioError) {
+          console.error('❌ sendPtt falhou:', audioError.message);
+          
+          // FALLBACK 1: Tentar sendVoice se existir
+          try {
+            if (session.client.sendVoice) {
+              console.log('🎤 Tentando sendVoice...');
+              result = await session.client.sendVoice(
+                to,
+                options.path
+              );
+              console.log('✅ Áudio enviado via sendVoice');
+            } else {
+              throw new Error('sendVoice não disponível');
+            }
+          } catch (voiceError) {
+            console.error('❌ sendVoice falhou:', voiceError.message);
+            
+            // FALLBACK 2: Enviar como arquivo comum
+            try {
+              console.log('📄 Tentando como arquivo comum...');
+              result = await session.client.sendFile(
+                to, 
+                options.path, 
+                'voice-message.ogg',
+                '🎵 Mensagem de voz'
+              );
+              console.log('✅ Áudio enviado como arquivo');
+            } catch (fileError) {
+              console.error('❌ Envio como arquivo também falhou:', fileError.message);
+              throw new Error(`Falha completa no envio de áudio: ${audioError.message}`);
+            }
+          }
+        }
+        
+      } else if (options.type === 'video' && options.path) {
+        console.log('🎥 Enviando vídeo:', options.path);
+        result = await session.client.sendVideoAsGif(to, options.path, options.filename || 'video', content || '');
+        
+      } else {
+        // Mensagem de texto
+        let finalContent = content || '';
+        if (options.signature) {
+          finalContent += `\n\n_${options.signature}_`;
+        }
+        
+        // Verificar se o conteúdo não está vazio
+        if (!finalContent.trim()) {
+          finalContent = '📝 Mensagem enviada';
+        }
+        
+        result = await session.client.sendText(to, finalContent);
+      }
+
+      console.log('✅ Mensagem enviada com sucesso');
+      
+      return {
+        success: true,
+        messageId: result?.id || result?._serialized || 'temp_' + Date.now()
+      };
+
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem:', error.message);
+      throw new Error(`Falha no envio: ${error.message}`);
+    }
+  }
+
+  // Lidar com QR Code
+  async handleQRCode(sessionId, qrCode) {
+    await db.sessions.update(sessionId, {
+      qrcode: qrCode,
+      status: 'connecting'
+    });
+
+    this.io.emit('session:qr', {
+      sessionId,
+      qrCode
+    });
+  }
+
+  // Lidar com mudança de status
+  async handleStatus(sessionId, status) {
+    let dbStatus = 'disconnected';
+    
+    if (status === 'isLogged' || status === 'inChat') {
+      dbStatus = 'connected';
+    } else if (status === 'qrReadSuccess' || status === 'isConnecting') {
+      dbStatus = 'connecting';
+    }
+
+    await db.sessions.update(sessionId, { status: dbStatus });
+    
+    this.io.emit('session:status', {
+      sessionId,
+      status: dbStatus
+    });
+  }
+
+  // Lidar com desconexão
+  async handleDisconnect(sessionId) {
+    const session = sessions.get(sessionId);
+    if (session && session.client) {
+      try {
+        await session.client.close();
+      } catch (error) {
+        console.error('Erro ao fechar cliente:', error);
+      }
+    }
+
+    // Limpar recursos específicos da sessão
+    if (session) {
+      await this.cleanupSessionResources(sessionId, session.name);
+    }
+
+    sessions.delete(sessionId);
+    
+    await db.sessions.update(sessionId, {
+      status: 'disconnected',
+      qrcode: null
+    });
+
+    this.io.emit('session:disconnected', { sessionId });
+    console.log(`🔌 Sessão ${sessionId} desconectada e recursos limpos`);
+  }
+
+  // Desconectar sessão
+  async disconnectSession(sessionId) {
+    await this.handleDisconnect(sessionId);
+  }
+
+  // Obter todas as sessões
+  getSessions() {
+    const activeSessions = [];
+    sessions.forEach((session, id) => {
+      activeSessions.push({
+        id,
+        name: session.name,
+        status: session.status
+      });
+    });
+    return activeSessions;
+  }
+
+  // Verificar se sessão está ativa
+  isSessionActive(sessionId) {
+    return sessions.has(sessionId);
+  }
+
+  // Obter cliente da sessão
+  getClient(sessionId) {
+    const session = sessions.get(sessionId);
+    return session ? session.client : null;
+  }
+  
+  // Verificar e processar enquetes ativas
+  async checkActivePoll(contactId, messageText) {
+    try {
+      // Buscar enquete ativa para este contato
+      const activePoll = await db.polls.findActiveByContact(contactId);
+      
+      if (!activePoll) {
+        return false;
+      }
+      
+      // Verificar se expirou
+      if (activePoll.expires_at && new Date() > new Date(activePoll.expires_at)) {
+        await db.polls.updateStatus(activePoll.id, 'expired');
+        return false;
+      }
+      
+      // Verificar se já respondeu
+      const hasResponded = await db.pollResponses.hasResponded(activePoll.id, contactId);
+      if (hasResponded) {
+        return false;
+      }
+      
+      // Processar resposta
+      const response = await this.processPollResponse(activePoll, messageText);
+      if (response) {
+        // Salvar resposta
+        await db.pollResponses.create({
+          poll_id: activePoll.id,
+          contact_id: contactId,
+          selected_options: response.selectedOptions,
+          response_text: messageText
+        });
+        
+        // Enviar confirmação
+        await this.sendPollConfirmation(activePoll, response, contactId);
+        
+        console.log(`✅ Resposta de enquete processada para contato ${contactId}`);
+        return true;
+      }
+      
+      return false;
+      
+    } catch (error) {
+      console.error('Erro ao verificar enquete ativa:', error);
+      return false;
+    }
+  }
+
+  // Processar resposta da enquete
+  async processPollResponse(poll, messageText) {
+    try {
+      const cleanText = messageText.trim().toLowerCase();
+      const selectedOptions = [];
+      
+      // Verificar se é resposta numérica
+      const numbers = cleanText.match(/\d+/g);
+      if (numbers) {
+        for (const num of numbers) {
+          const optionIndex = parseInt(num);
+          if (optionIndex >= 1 && optionIndex <= poll.options.length) {
+            selectedOptions.push(optionIndex);
+            
+            // Para enquete de escolha única, parar no primeiro número válido
+            if (poll.poll_type === 'single') {
+              break;
+            }
+          }
+        }
+      }
+      
+      // Se não encontrou números válidos, tentar buscar por texto
+      if (selectedOptions.length === 0) {
+        for (let i = 0; i < poll.options.length; i++) {
+          const option = poll.options[i].toLowerCase();
+          if (cleanText.includes(option) || option.includes(cleanText)) {
+            selectedOptions.push(i + 1);
+            if (poll.poll_type === 'single') {
+              break;
+            }
+          }
+        }
+      }
+      
+      if (selectedOptions.length === 0) {
+        return null; // Resposta inválida
+      }
+      
+      // Para enquete múltipla, remover duplicatas
+      const uniqueOptions = [...new Set(selectedOptions)];
+      
+      return {
+        selectedOptions: uniqueOptions,
+        optionTexts: uniqueOptions.map(index => poll.options[index - 1])
+      };
+      
+    } catch (error) {
+      console.error('Erro ao processar resposta da enquete:', error);
+      return null;
+    }
+  }
+
+  // Enviar confirmação da resposta
+  async sendPollConfirmation(poll, response, contactId) {
+    try {
+      const contact = await db.query('SELECT number FROM contacts WHERE id = ?', [contactId]);
+      if (!contact.length) return;
+      
+      const selectedTexts = response.optionTexts.join(', ');
+      const message = `✅ *Resposta registrada!*\n\n` +
+                     `📊 **${poll.question}**\n\n` +
+                     `Sua resposta: ${selectedTexts}\n\n` +
+                     `_Obrigado por participar!_`;
+      
+      // Buscar sessão ativa
+      const sessions = await db.sessions.list();
+      const activeSession = sessions.find(s => s.status === 'connected');
+      
+      if (activeSession) {
+        await this.sendMessage(activeSession.id, contact[0].number, message);
+      }
+      
+    } catch (error) {
+      console.error('Erro ao enviar confirmação da enquete:', error);
+    }
+  }
+
+  // Enviar enquete para contato
+  async sendPollToContact(sessionId, contactNumber, pollData) {
+    try {
+      let message = `📊 *${pollData.question}*\n\n`;
+      
+      pollData.options.forEach((option, index) => {
+        const emoji = pollData.poll_type === 'single' ? '🔘' : '☐';
+        message += `${emoji} ${index + 1}. ${option}\n`;
+      });
+      
+      message += `\n_Responda com o número da opção`;
+      if (pollData.poll_type === 'multiple') {
+        message += ' (pode escolher várias separadas por vírgula)';
+      }
+      message += '_';
+      
+      if (pollData.expires_at) {
+        const expiresDate = new Date(pollData.expires_at);
+        message += `\n\n⏰ _Expira em: ${expiresDate.toLocaleString('pt-BR')}_`;
+      }
+      
+      const result = await this.sendMessage(sessionId, contactNumber, message);
+      
+      // Atualizar enquete com message_id se disponível
+      if (result.messageId && pollData.id) {
+        await db.query('UPDATE polls SET message_id = ? WHERE id = ?', [result.messageId, pollData.id]);
+      }
+      
+      return result;
+      
+    } catch (error) {
+      console.error('Erro ao enviar enquete:', error);
+      throw error;
+    }
+  }
+
+  // Limpeza periódica do cache de mensagens automáticas
+  startCacheCleanup() {
+    setInterval(() => {
+      const now = Date.now();
+      const maxAge = 3600000; // 1 hora
+      
+      for (const [key, timestamp] of lastAutoMessages.entries()) {
+        if (now - timestamp > maxAge) {
+          lastAutoMessages.delete(key);
+        }
+      }
+      
+      console.log(`🧹 Cache de mensagens automáticas limpo. Entradas restantes: ${lastAutoMessages.size}`);
+    }, 1800000); // Limpar a cada 30 minutos
+  }
+}
+
+// Exportar a classe
+module.exports = WhatsAppService;
